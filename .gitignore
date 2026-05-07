@@ -79,9 +79,3 @@ lightning_logs/
 *.feather
 *.sqlite
 *.db
-
-# Keep bundled paper sources and curated plain-text extractions versioned
-!papers/
-!papers/**/*.pdf
-!papers/extracted/
-!papers/extracted/*.txt
