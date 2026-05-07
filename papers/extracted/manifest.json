@@ -1,0 +1,41 @@
+{
+  "format_version": 3,
+  "description": "Compact extraction: full text plus selected embedded paper figures only. No rendered page screenshots.",
+  "papers": [
+    {
+      "paper_id": "v1",
+      "page_count": 12,
+      "text_txt": "/Users/sekiro/Projects/personal/tracknet-series-pytorch/papers/extracted/v1/text.txt",
+      "metadata_json": "/Users/sekiro/Projects/personal/tracknet-series-pytorch/papers/extracted/v1/metadata.json",
+      "embedded_figure_count": 2
+    },
+    {
+      "paper_id": "v2",
+      "page_count": 6,
+      "text_txt": "/Users/sekiro/Projects/personal/tracknet-series-pytorch/papers/extracted/v2/text.txt",
+      "metadata_json": "/Users/sekiro/Projects/personal/tracknet-series-pytorch/papers/extracted/v2/metadata.json",
+      "embedded_figure_count": 7
+    },
+    {
+      "paper_id": "v3",
+      "page_count": 7,
+      "text_txt": "/Users/sekiro/Projects/personal/tracknet-series-pytorch/papers/extracted/v3/text.txt",
+      "metadata_json": "/Users/sekiro/Projects/personal/tracknet-series-pytorch/papers/extracted/v3/metadata.json",
+      "embedded_figure_count": 3
+    },
+    {
+      "paper_id": "v4",
+      "page_count": 17,
+      "text_txt": "/Users/sekiro/Projects/personal/tracknet-series-pytorch/papers/extracted/v4/text.txt",
+      "metadata_json": "/Users/sekiro/Projects/personal/tracknet-series-pytorch/papers/extracted/v4/metadata.json",
+      "embedded_figure_count": 4
+    },
+    {
+      "paper_id": "v5",
+      "page_count": 14,
+      "text_txt": "/Users/sekiro/Projects/personal/tracknet-series-pytorch/papers/extracted/v5/text.txt",
+      "metadata_json": "/Users/sekiro/Projects/personal/tracknet-series-pytorch/papers/extracted/v5/metadata.json",
+      "embedded_figure_count": 7
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+preprocess:
+  raw_root: data/raw
+  output_root: data/processed/tracknet_512x288
+  target_width: 512
+  target_height: 288
+  overwrite: false
+  image_extension: .png
+  missing_annotation_policy: invisible
+  background_sample_stride: 1

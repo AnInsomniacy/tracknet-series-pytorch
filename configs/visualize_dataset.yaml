@@ -1,0 +1,9 @@
+visualize_dataset:
+  output_dir: outputs/visualize_dataset
+  max_samples: 8
+  dataset:
+    processed_root: data/processed/tracknet_512x288
+    sequence_length: 3
+    target_frame_mode: all
+    heatmap_mode: gaussian
+    sigma: 3.0

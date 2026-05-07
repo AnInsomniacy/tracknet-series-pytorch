@@ -1,0 +1,671 @@
+===== PAGE 1 =====
+TRACKNETV5: RESIDUAL-DRIVEN SPATIO-TEMPORAL
+REFINEMENT AND MOTION DIRECTION DECOUPLING FOR FAST
+OBJECT TRACKING ∗
+Haonan Tang†
+Wuhan University of Technology
+Shanghai Code Zero Sports Technology Co.
+lancera.thn@gmail.com
+Yanjun Chen‡
+Wuhan University of Technology
+mschen250@gmail.com
+Lezhi Jiang§
+Wuhan University of Technology
+jackjianglezhi@gmail.com
+Qianfei Li¶
+Shanghai Code Zero Sports Technology Co.
+qf.qianfei@gmail.com
+Xinyu Guo∥
+Shanghai Code Zero Sports Technology Co.
+xinyg1412@gmail.com
+ABSTRACT
+The TrackNet series has established a strong baseline for fast-moving small object tracking in sports.
+However, existing iterations face significant limitations: V1–V3 struggle with occlusions due to a
+reliance on purely visual cues, while TrackNetV4, despite introducing motion inputs, suffers from
+directional ambiguity as its absolute difference method discards motion polarity. To overcome
+these bottlenecks, we propose TrackNetV5, a robust architecture integrating two novel mechanisms.
+First, to recover lost directional priors, we introduce the Motion Direction Decoupling (MDD)
+module. Unlike V4, MDD decomposes temporal dynamics into signed polarity fields, explicitly
+encoding both movement occurrence and trajectory direction. Second, we propose the Residual-
+Driven Spatio-Temporal Refinement (R-STR) head. Operating on a coarse-to-fine paradigm, this
+Transformer-based module leverages factorized spatio-temporal contexts to estimate a corrective
+residual, effectively recovering occluded targets. Extensive experiments on the TrackNetV2 dataset
+demonstrate that TrackNetV5 achieves a new state-of-the-art F1-score of 0.9859 and an accuracy of
+0.9733, significantly outperforming previous versions. Notably, this performance leap is achieved
+with a marginal 3.7% increase in FLOPs compared to V4, maintaining real-time inference capabilities
+while delivering superior tracking precision.
+1
+Introduction
+High-speed small object tracking, particularly for tennis balls, is a cornerstone of modern sports analytics. It facilitates
+critical applications such as electronic line calling, tactical analysis, and broadcast visualization. However, this task
+presents severe computer vision challenges: targets are subjected to extreme motion blur, drastic deformation, variable
+∗Preprint Citation: Tang, H., Chen, Y., and Jiang, L. TrackNetV5: Residual-Driven Spatio-Temporal Refinement and
+Motion Direction Decoupling for Fast Object Tracking. Submitted to ArXiv (2025).
+†Equal contribution
+‡Equal contribution
+§Equal contribution
+¶Corresponding author
+∥Corresponding author
+arXiv:2512.02789v4  [cs.CV]  13 Jan 2026
+
+===== PAGE 2 =====
+TrackNetV5
+lighting, and frequent occlusion by athletes. Consequently, traditional visual tracking methods often struggle to maintain
+robust localization under such dynamic conditions.
+With the advent of deep learning, the TrackNet series [1, 2, 3, 4, 5] has emerged as the de facto benchmark in this
+domain. TrackNetV1 [1] pioneered the heatmap-based Encoder-Decoder paradigm but suffered from limited recall.
+TrackNetV2 [2] substantially improved throughput and accuracy via the Multiple-In-Multiple-Out (MIMO) architecture.
+More recently, TrackNetV3 [4] demonstrated that stacking heavy computational modules (e.g., Inception-style blocks)
+could achieve higher accuracy, but at the cost of significantly increased latency (approx. 3× slower than V2), rendering
+it less viable for resource-constrained real-time applications.
+To balance efficiency and accuracy, the state-of-the-art TrackNetV4 [5] integrated motion priors based on absolute
+frame differences. While efficient, V4 and previous iterations still exhibit distinct structural limitations that hinder
+further performance breakthroughs:
+1. Directional Ambiguity: TrackNetV4 extracts motion cues using absolute frame differences (|It −It−1|).
+While this captures movement occurrence, the absolute value operation inherently discards the sign of
+intensity changes (polarity). Consequently, the network loses critical directional priors—specifically, the
+vector pointing from the "darkening" departure region to the "brightening" arrival region—which are essential
+for distinguishing the ball from background noise.
+2. Underutilized Spatio-Temporal Context: Existing MIMO architectures (V2–V4) generate heatmaps for
+consecutive frames (e.g., t−1, t, t+1) in a single pass. However, these predictions are generated as independent
+structural outputs without a mechanism to enforce temporal consistency. The latent correlation between
+consecutive heatmaps—where a high-confidence detection in one frame should support low-confidence
+detections in adjacent frames—remains unexploited.
+To address these limitations, we propose TrackNetV5, a novel architecture that integrates explicit directional modeling
+with coarse-to-fine refinement. Our contributions are twofold:
+First, we introduce the Motion Direction Decoupling (MDD) module. Addressing the directional ambiguity in V4,
+MDD decomposes raw temporal dynamics into distinct positive and negative polarity fields. This mechanism explicitly
+disentangles movement occurrence from movement direction, providing the encoder with robust directional cues
+without increasing model depth.
+Second, we propose the Residual-Driven Spatio-Temporal Refinement (R-STR) head. Instead of treating the decoder’s
+output as the final result, we view it as a preliminary "draft." The R-STR module leverages factorized spatio-temporal
+attention to estimate a residual correction map, effectively refining the draft by recovering occluded targets and
+suppressing motion artifacts based on temporal coherence.
+Extensive experiments on the TrackNetV2 dataset demonstrate that TrackNetV5 achieves a new state-of-the-art
+performance with an F1-score of 0.9859 and an accuracy of 0.9733, significantly outperforming all prior versions.
+Notably, this performance leap is achieved with a marginal 3.7% increase in FLOPs compared to V4, maintaining the
+series’ signature efficiency while delivering superior tracking precision.
+2
+Related Work
+2.1
+Small Object Tracking in Sports
+The TrackNet series [1, 2, 3, 4, 5] has established the dominant paradigm for high-speed ball tracking. TrackNetV1 [1]
+introduced the heatmap regression framework, treating tracking as a specific localization task. TrackNetV2 [2] advanced
+this by employing a Multiple-In-Multiple-Out (MIMO) architecture to process consecutive frames, significantly
+improving throughput. Subsequent variants, such as TrackNetV3 [4], focused on maximizing accuracy by stacking
+heavyweight modules (e.g., Inception blocks), but at the cost of real-time performance.
+Most recently, TrackNetV4 [5] integrated motion priors via absolute frame differences, successfully highlighting
+regions of movement. However, as discussed in Sec. 1, its reliance on absolute magnitudes inherently discards
+directional polarity, limiting the model’s ability to distinguish object trajectories from background noise. In contrast,
+our TrackNetV5 introduces a polarity-aware motion decoupling mechanism to recover these lost directional cues while
+maintaining high efficiency.
+2
+
+===== PAGE 3 =====
+TrackNetV5
+2.2
+Motion Representation in Video Analysis
+Motion representation is critical for distinguishing moving targets from complex backgrounds. Existing approaches
+generally fall into two categories:
+Explicit Motion Modeling. Methods like Optical Flow explicitly calculate pixel-level displacement vectors. Recent
+works, such as TOTNET [6], combine optical flow maps with 3D convolutions to extract robust spatio-temporal features.
+While accurate, optical flow computation incurs a prohibitive computational overhead, rendering it unsuitable for
+latency-sensitive applications.
+Implicit Motion Modeling. Alternatively, architectures like I3D [7] or Video Transformers [8][9] utilize 3D convo-
+lutions or self-attention to implicitly learn spatio-temporal dependencies. Although effective, these models typically
+require massive parameter counts and heavy computation (FLOPs).
+To balance efficiency and accuracy, lightweight approaches like TrackNetV4 utilize frame differencing. While
+computationally inexpensive, standard differencing is a "lossy" operation that obscures motion direction. Our proposed
+Motion Direction Decoupling (MDD) module bridges this gap. It offers the directional clarity of optical flow-like
+representations but retains the computational efficiency of simple frame differencing.
+2.3
+Spatio-Temporal Refinement
+Refinement strategies are widely used to correct initial predictions. In static keypoint detection, Cascaded Architectures
+(e.g., Convolutional Pose Machines [10]) refine heatmaps stage-by-stage. However, these spatial-only methods operate
+on single frames, ignoring the temporal consistency inherent in video data.
+In the video domain, Temporal Attention mechanisms (e.g., TimeSformer [8]) excel at capturing long-range dependen-
+cies. However, existing video Transformers are typically designed as heavyweight backbones rather than lightweight
+refinement heads. Furthermore, most refinement approaches employ a reconstruction paradigm, forcing the network to
+regenerate the entire heatmap from scratch.
+Our Residual-Driven Spatio-Temporal Refinement (R-STR) addresses these limitations. Unlike spatial cascades, it
+exploits temporal context from the MIMO output. Unlike heavy video backbones, it is a lightweight head designed for
+efficiency. Crucially, by adopting a residual learning formulation, it simplifies the optimization landscape, focusing
+solely on correcting local errors rather than full-scale reconstruction.
+3
+Methodology
+3.1
+Overall Architecture
+The TrackNetV5 framework, illustrated in Figure 1, is designed as a unified end-to-end pipeline that integrates explicit
+motion modeling with coarse-to-fine refinement. The architecture effectively extends the baseline V2 Encoder-Decoder
+backbone by incorporating the proposed MDD and R-STR modules at the logical input and output stages, respectively.
+Motion-Guided Feature Encoding. Given an input sequence of three consecutive frames I ∈R3×3×H×W , the
+processing initiates with the MDD module. As detailed in Section 3.1, MDD extracts directional polarity fields, which
+are immediately interleaved with the raw RGB frames to form a motion-augmented tensor Xin. This composite input
+is fed into the V2 Backbone (detailed in Figure 2), which employs a U-Net[11]-like topology to capture multi-scale
+spatio-temporal contexts. The encoder progressively downsamples the feature space to a bottleneck representation,
+while the decoder reconstructs the spatial details via skip connections.
+Residual-Based Refinement. Distinct from conventional architectures that treat the decoder’s output as the final
+prediction, TrackNetV5 treats it as a preliminary coarse draft containing latent structural information. To recover
+fine-grained trajectory details, we introduce a long-range skip connection that bridges the front-end MDD module
+directly to the back-end R-STR module. This design allows the refinement head to leverage both the decoder’s draft
+predictions and the original high-frequency motion cues. The R-STR module aggregates these features to predict a
+residual correction map, yielding the final high-precision heatmaps.
+3.2
+Motion Direction Decoupling Module
+Standard frame-differencing approaches efficiently capture motion occurrences but suffer from directional ambiguity,
+as the absolute difference operation inherently discards the polarity of intensity changes. To resolve this limitation, we
+propose the Motion Direction Decoupling (MDD) module. As illustrated in Figure 3, this module decomposes temporal
+3
+
+===== PAGE 4 =====
+TrackNetV5
+Figure 1: Overall Architecture of TrackNetV5.
+Figure 2: Detailed architecture of the V2 Encoder-Decoder.
+dynamics into distinct polarity fields to recover directional priors, which are then fused with visual features to guide the
+backbone network.
+3.2.1
+Directional Polarity Decomposition
+Consider an input sequence of three consecutive frames It−1, It, It+1. The temporal evolution between adjacent frames
+is first captured via raw difference maps Dt−1→t = It −It−1 and Dt→t+1 = It+1 −It.
+Unlike previous methods that utilize the magnitude |D|, we disentangle the motion signals into positive (brightening)
+and negative (darkening) polarity channels. As shown in Figure 4, this operation is formulated as:
+P +(∆) = ReLU(∆),
+P −(∆) = ReLU(−∆)
+(1)
+where ∆represents the raw difference map. By applying this decomposition, we obtain paired polarity maps for each
+temporal interval, effectively encoding the trajectory direction—specifically, a moving object creates a negative trace at
+its departure point (P −) and a positive trace at its arrival point (P +).
+3.2.2
+Learnable Attention Mapping
+The raw pixel intensities in polarity maps P + and P −vary significantly with lighting conditions. To transform these
+signals into robust attention weights constrained to [0, 1], we employ a parameterized non-linear mapping function f(·).
+For a given polarity intensity x, the attention weight A is computed as:
+4
+
+===== PAGE 5 =====
+TrackNetV5
+Figure 3: The overall architecture of the Motion Direction Decoupling (MDD) mechanism.
+Figure 4: Schematic illustration of the Polarity Decomposition Layer.
+A = f(x; α, β) =
+1
+1 + exp (−k(α) · (|x| −m(β)))
+(2)
+Here, k(α) and m(β) control the slope and center offset of the activation function, respectively. They are derived from
+learnable parameters α and β to ensure numerical stability and adaptivity:
+k(α) =
+5.0
+0.45| tanh(α)| + ϵ,
+m(β) = 0.6 tanh(β)
+(3)
+where ϵ is a small constant. This design allows the network to adaptively determine the optimal sensitivity threshold for
+motion activation during backpropagation, filtering out background noise while highlighting fast-moving objects.
+3.2.3
+Motion-Aware Feature Aggregation
+The generated attention maps are explicitly integrated into the network’s input stream to guide feature extraction. Let
+At−1,t ∈R2×H×W denote the concatenated attention maps {A(P +
+t−1→t), A(P −
+t−1→t)} for the first interval.
+To preserve both spatial appearance and temporal dynamics, the input to the backbone encoder is constructed by
+interleaving raw RGB frames with their corresponding motion attention maps:
+Xin = Concat (It−1, At−1,t, It, At,t+1, It+1)
+(4)
+5
+
+===== PAGE 6 =====
+TrackNetV5
+Figure 5: The workflow of the Residual-Driven Spatio-Temporal Refinement (R-STR) module. The Dropout mechanism
+is active only during the training phase.
+Figure 6: The visualization of the Residual-Driven Spatio-Temporal Refinement (R-STR) module.
+This results in a 13-channel tensor (assuming 3-channel RGB frames), ensuring that the subsequent convolutional layers
+possess aligned spatial-temporal contexts. Furthermore, as shown in our architecture, these directional attention maps
+are also reused in the prediction head to spatially gate the final output, enhancing the model’s focus on valid motion
+regions.
+3.3
+Residual-Driven Spatio-Temporal Refinement
+Existing approaches in the TrackNet family predominantly rely on frame-independent predictions, largely neglecting
+the rich temporal consistency inherent in ball trajectories. To address this limitation, we propose the Residual-Driven
+Spatio-Temporal Refinement (R-STR) module. The core insight is that the preliminary heatmap drafts generated by
+the MIMO architecture contain latent spatio-temporal contexts that can be leveraged for two distinct refinement tasks:
+temporal enhancement for low-confidence occlusion frames and noise suppression for motion artifacts.
+3.3.1
+R-STR Structure
+To effectively integrate these spatio-temporal cues, the R-STR module operates on a residual learning paradigm. As
+illustrated in Figure 5, the workflow proceeds in three stages. First, the decoder features are compressed via a 1×1
+convolution to generate preliminary heatmap drafts. Second, to incorporate motion priors, these drafts are fused with
+the motion attention maps from the MDD module, yielding a motion-aware feature map denoted as DraftMDD.
+Finally, instead of reconstructing the final probability map from scratch, we employ a dedicated Spatio-Temporal
+Self-Attention Head (TSATTHead) to estimate a correction tensor ∆. We posit that learning a corrective residual is
+significantly more convergent than full reconstruction.
+To enforce robust temporal dependency learning, we introduce the Stochastic Context Masking strategy, realized by
+applying a dropout layer (ρ = 0.1) to the DraftMDD only during training (as shown in Figure 5). We define the
+masked input as Draft′
+MDD = Dropout(DraftMDD).
+6
+
+===== PAGE 7 =====
+TrackNetV5
+The final heatmap refinement is formulated according to the stage:
+During Training, the Dropout mechanism is active, and the final prediction is calculated from the corrupted draft
+Draft′
+MDD. This forces the TSATTHead to learn a strong reconstruction residual ∆to recover the randomly zeroed-out
+pixels.
+Htrain
+final = σ(Draft′
+MDD + ∆train)
+The residual tensor ∆train is estimated from the masked input:
+∆train = TSATTHead(Draft′
+MDD)
+During Inference, the Dropout is disabled (ρ = 0), and the model operates on the clean draft DraftMDD. The
+correction tensor ∆inference is applied to the clean base.
+Hinference
+final
+= σ(DraftMDD + ∆inference)
+The residual tensor ∆inference is estimated from the clean input:
+∆inference = TSATTHead(DraftMDD)
+where σ denotes the Sigmoid activation function. This adaptive residual design ensures that the network is maximally
+regularized during training for robustness while maintaining optimal prediction quality on the clean input during
+deployment.
+3.3.2
+TSATTHead Architecture
+The TSATTHead (refer to Figure 7) serves as the computational engine for estimating the residual ∆. It is designed as a
+lightweight Transformer that refines the initial drafts through a serialized pipeline.
+Following the masking stage, we employ a patch embedding strategy [12] where non-overlapping patches are flattened
+and projected into an embedding space. These tokens are enriched with factorized spatio-temporal positional encodings
+to preserve sequence order. The sequence is then processed by a Transformer Encoder [13], where multi-head self-
+attention enables global interaction across spatial and temporal dimensions. Specifically, inspired by the factorized
+attention mechanism of TimeSformer [8], we decompose the self-attention into separate spatial and temporal blocks to
+efficiently capture and reconstruct the trajectory coherence. Finally, the processed tokens are decoded via a PixelShuffle
+[14] operation to generate the high-resolution residual map ∆, which is superposed onto the original clean draft to yield
+the final prediction.
+Figure 7: TSATTHead Design.
+4
+Experiment
+4.1
+Implementation Details
+Datasets and Inputs. We evaluate our method on two datasets: the public TrackNetV2 Dataset (1280 × 720) and our
+internal Loveall Dataset (1920 × 1080). Following standard protocols [2], the data is split into training and validation
+7
+
+===== PAGE 8 =====
+TrackNetV5
+Table 1: Quantitative comparison on the TrackNetV2 Dataset. The best results are highlighted in bold.
+Model
+Acc
+Precision
+Recall
+F1
+Total
+TP
+FP1
+FP2
+FP
+TN
+FN
+V2
+0.9396
+0.9919
+0.9446
+0.9677
+17682
+15988
+108
+23
+131
+626
+937
+V4
+0.9224
+0.9965
+0.9225
+0.9581
+17682
+15669
+47
+8
+55
+641
+1317
+V5 (Ours)
+0.9733
+0.9923
+0.9797
+0.9859
+17682
+16573
+116
+13
+129
+636
+344
+sets with a 7:3 ratio. During training and inference, all input frames are resized to a resolution of 512 × 288 to balance
+efficiency and spatial precision. The model takes a sequence of three consecutive RGB frames (It−1, It, It+1) as input
+to predict the trajectory heatmaps.
+Ground Truth Generation. Unlike methods using soft Gaussian distributions, we employ a Gaussian-guided binary
+masking strategy to sharpen supervision signals. For a ground truth ball coordinate (cx, cy), we first define a region of
+interest (ROI) using a Gaussian kernel radius r. To mitigate class imbalance, we binarize this region:
+Y (x, y) =
+1,
+if (x, y) ∈ROIr
+0,
+otherwise
+(5)
+We set the kernel radius r = 30 for the TrackNetV2 dataset and r = 40 for the higher-resolution Loveall dataset,
+ensuring consistent supervision scales relative to the ball size.
+Loss Function. Following TrackNetV2 [2], we utilize the Weighted Binary Cross Entropy (WBCE). This loss function
+addresses the extreme foreground-background imbalance by dynamically weighting the pixel-wise entropy based on
+prediction confidence. The formulation is defined as:
+LW BCE = −1
+N
+X
+i
+
+(1 −pi)2yi log(pi) + p2
+i (1 −yi) log(1 −pi)
+
+(6)
+where pi represents the predicted probability and yi ∈{0, 1} is the ground truth label. The weights (1 −pi)2 and p2
+i
+enforce the model to focus on hard examples, preventing the vast background regions from dominating the gradient.
+Training Setup. The model is implemented in PyTorch and trained on a single NVIDIA RTX 4090 (24GB) GPU. We
+use the AdamW optimizer[15] with a batch size of 2 and an initial learning rate of 1 × 10−4. The training spans 30
+epochs, with a multi-step learning rate decay (γ = 0.1) applied at epochs 20 and 25.
+Evaluation Metrics. For fair benchmarking, all inference speed tests (FPS) reported in this paper are conducted on an
+NVIDIA T4 GPU. Following the standard TrackNet evaluation protocol, a prediction is defined as a True Positive (TP)
+if the Euclidean distance between the predicted center and the ground truth center is within a tolerance of 4 pixels at the
+original resolution. Precision, Recall, and F1-score are calculated based on this criterion.
+4.2
+Main Results
+We evaluate TrackNetV5 against state-of-the-art methods (TrackNetV2 and TrackNetV4) on the standard TrackNetV2
+dataset and the Loveall dataset. Results are summarized in Table 1, Table 2, and Table 3.
+Comparison on Public Benchmarks. As shown in Table 1, TrackNetV5 achieves a new state-of-the-art F1-score of
+0.9859 and an Accuracy of 0.9733, outperforming the previous best TrackNetV4 by 2.78% in F1. A critical analysis of
+the Precision-Recall trade-off highlights our architectural advantage: while V4 attains high Precision (0.9965), it suffers
+from conservative predictions with low Recall (0.9225) and 1,317 False Negatives. In contrast, TrackNetV5 drastically
+reduces False Negatives by 73.9% (to 344) while maintaining high Precision (0.9923). This confirms that the MDD and
+R-STR modules effectively recover hard-to-detect targets without introducing excessive noise. Furthermore, on the
+Loveall Dataset (Table 2), TrackNetV5 demonstrates superior generalization with an F1-score of 0.9878. The reduction
+of False Negatives to just 186 (vs. 523 for V4) proves that our explicit directional modeling and temporal refinement
+are robust to domain shifts in lighting and camera angles.
+Efficiency vs. Accuracy Trade-off. Finally, we analyze the computational cost on an NVIDIA T4 GPU (Table 3).
+While TrackNetV5 introduces additional modules, the overhead is marginal, with only a 3.7% increase in FLOPs
+(117.09 G) compared to V4. Crucially, it maintains a real-time inference speed of 114 FPS (38.12 × 3), far exceeding
+the requirement for standard sports broadcasting (30/60 FPS). This demonstrates that TrackNetV5 achieves a highly
+favorable trade-off, delivering substantial accuracy gains with negligible computational cost.
+8
+
+===== PAGE 9 =====
+TrackNetV5
+Table 2: Generalization test on the Loveall Dataset.
+Model
+Acc
+Precision
+Recall
+F1
+Total
+TP
+FP1
+FP2
+FP
+TN
+FN
+V2
+0.9542
+0.9947
+0.9584
+0.9762
+11313
+10615
+54
+3
+57
+180
+461
+V4
+0.9484
+0.9943
+0.9528
+0.9731
+11313
+10555
+52
+9
+61
+174
+523
+V5 (Ours)
+0.9763
+0.9925
+0.9832
+0.9878
+11313
+10864
+80
+2
+82
+181
+186
+Table 3: Efficiency comparison on NVIDIA T4. FPS is measured with real video inference.
+Model
+FPS (Real)
+FLOPs / G
+Params / M
+V2
+41.09 × 3
+112.89
+11.33
+V4
+40.32 × 3
+112.89
+11.33
+V5 (Ours)
+38.12 × 3
+117.09
+14.77
+4.3
+Ablation Study
+Effectiveness of Motion Direction Decoupling (MDD). We first verify the impact of the MDD module by comparing
+the baseline TrackNetV2 with V2 equipped with MDD. As shown in Table 4, the MDD module improves the F1-score
+from 0.9677 to 0.9695 and reduces False Negatives from 937 to 861. This indicates that explicitly modeling directional
+polarity helps the network recall ambiguous targets that are overlooked by the baseline.
+Table 4: Ablation study on the MDD Module using the TrackNet dataset. MDD improves recall and F1-score compared
+to the V2 and V4 baselines.
+Model
+Acc
+Precision
+Recall
+F1
+Total
+TP
+FP1
+FP2
+FP
+TN
+FN
+V2
+0.9396
+0.9919
+0.9446
+0.9677
+17682
+15988
+108
+23
+131
+626
+937
+V4
+0.9224
+0.9965
+0.9225
+0.9581
+17682
+15669
+47
+8
+55
+641
+1317
+V2 + MDD
+0.9428
+0.9907
+0.9491
+0.9695
+17682
+16047
+125
+25
+150
+624
+861
+Effectiveness of R-STR Module and Final Architecture Choice. We further evaluate the R-STR module. As
+presented in Table 5, the "V2 + R-STR" configuration achieves a remarkable performance boost, with the F1-score
+reaching 0.9866.
+It is worth noting that the "V2 + R-STR" configuration yields a marginally higher F1-score (0.9866) than our final
+TrackNetV5 (0.9859, which combines MDD and R-STR). However, we deliberately selected the combined architecture
+as the final TrackNetV5 for practical considerations. As shown in comparisons between Table 1 and Table 5, although
+"V2 + R-STR" has excellent recall, its Precision is approximately 0.39% lower than the final V5 (0.9885 vs. 0.9923),
+and it generates 65 more False Positives (194 vs. 129). In real-world sports analytics, high Precision is often prioritized
+to minimize false alarms, which can disrupt automated game analysis. By integrating MDD, the final TrackNetV5
+effectively suppresses these outliers, offering a more robust and commercially viable balance between Precision and
+Recall.
+5
+Conclusion
+In this paper, we addressed a long-standing challenge in sports video analytics: high-speed small object tracking.
+Motivated by two major deficiencies in the existing TrackNet family (a lack of explicit motion directionality representa-
+tion and the failure to utilize wasted spatio-temporal context in the MIMO architecture), we proposed TrackNetV5,
+a new model introducing two complementary architectural innovations. First, we designed the MDD module, which
+successfully encodes movement direction information into the motion features by decoupling change polarity. Sec-
+ond, we introduced the R-STR module, which leverages a lightweight spatio-temporal Transformer and a residual
+error-correction mechanism to, for the first time, exploit the spatio-temporal context among multi-frame heatmap drafts.
+Extensive experiments on the public TrackNet tennis dataset and our proprietary LoveAll dataset (which features low-
+angle baseline views, more occlusions, and greater difficulty) demonstrate the effectiveness of our method. TrackNetV5
+significantly outperforms all prior benchmarks, establishing a new SOTA. More importantly, this performance leap is
+achieved with minimal computational overhead (GFLOPs increased by only 3.7% over V2 and V4), highlighting the
+high efficiency of our design.
+9
+
+===== PAGE 10 =====
+TrackNetV5
+Table 5: Ablation study on the R-STR Module. While "V2 + R-STR" achieves the highest F1, it incurs higher False
+Positives compared to the final TrackNetV5.
+Model
+Acc
+Precision
+Recall
+F1
+Total
+TP
+FP1
+FP2
+FP
+TN
+FN
+V2
+0.9396
+0.9919
+0.9446
+0.9677
+17682
+15988
+108
+23
+131
+626
+937
+V2 + R-STR
+0.9745
+0.9885
+0.9848
+0.9866
+17682
+16607
+169
+25
+194
+624
+257
+Although our work has limitations and potential for improvement—such as investigating whether a larger temporal
+window could further suppress False Positives in complex backgrounds—we believe the efficient motion representation
+and spatio-temporal refinement paradigms demonstrated by TrackNetV5 offer valuable insights for real-time small
+object tracking and other complex sports analytics tasks.
+Additional Visualization
+The effectiveness of models V2, V4, and V5 in tennis ball tracking is further substantiated by the comparative results
+presented in the figures below. These figures, including Figure 8, Figure 9, and Figure 10 from TrackNet Dataset, and
+Figure 11 and Figure 12 from LoveAll Dataset serve as qualitative examples of the models’ performance.
+Each visualization panel within a figure is structured into three consecutive vertical sections to facilitate direct
+comparison:
+• The top three rows illustrate the results produced by the V2 model.
+• The middle three rows display the predictions from the V4 model.
+• The bottom three rows correspond to the output of the V5 model.
+The prediction accuracy is visually assessed through distinct markers superimposed on the frames:
+• A green cross indicates the Ground Truth (GT) position of the tennis ball.
+• A red cross denotes the position predicted by the respective model (Prediction).
+Crucially, in instances where the green cross is not visible, it signifies that the model’s red prediction cross has achieved
+exact spatial overlap with the true ball position. This complete superimposition visually confirms a zero-error prediction
+for that specific frame, highlighting the precision attained by the model.
+10
+
+===== PAGE 11 =====
+TrackNetV5
+Figure 8: Comparative visualization of models V2, V4, and V5 on TrackNet Dataset. Each block of three rows
+corresponds to one model.
+Figure 9: Comparative visualization of models V2, V4, and V5 on TrackNet Dataset. Each block of three rows
+corresponds to one model.
+11
+
+===== PAGE 12 =====
+TrackNetV5
+Figure 10: Comparative visualization of models V2, V4, and V5 on TrackNet Dataset. Each block of three rows
+corresponds to one model.
+Figure 11: Comparative visualization of models V2, V4, and V5 on LoveAll Dataset. Each block of three rows
+corresponds to one model.
+12
+
+===== PAGE 13 =====
+TrackNetV5
+Figure 12: Comparative visualization of models V2, V4, and V5 on LoveAll Dataset. Each block of three rows
+corresponds to one model.
+13
+
+===== PAGE 14 =====
+TrackNetV5
+Acknowledgments
+This work was supported by Shanghai Code Zero Sports Technology Co., which provided funding, computational
+resources, internal datasets, and technical guidance for this project.
+References
+[1] Yu-Chuan Huang, I-No Liao, Ching-Hsuan Chen, Tsiu-I Ik, and Wen-Chih Peng. Tracknet: A deep learning
+network for tracking high-speed and tiny objects in sports applications. Preprint, 2019.
+[2] Nien-En Sun, Yu-Ching Lin, Shao-Ping Chuang, Tzu-Han Hsu, Dung-Ru Yu, Ho-Yi Chung, and Tsiu-I Ik.
+Tracknetv2: Efficient shuttlecock tracking network. 2020 International Conference on Pervasive Artificial
+Intelligence (ICPAI), 2020.
+[3] Yu-Jou Chen and Yu-Shuen Wang. Tracknetv3: Enhancing shuttlecock tracking with augmentations and trajectory
+rectification. MMAsia ’23: ACM Multimedia Asia, 2023.
+[4] Anonymous. Tracknetv3: Beyond tracknetv2 and first tracknet using attention. 2023. Unofficial version, available
+at: https://drive.google.com/file/d/1XIxRfKbLY684eixlc16gohjbg_JQsI7s/view?usp=sharing.
+[5] Arjun Raj, Lei Wang, and Tom Gedeon. Tracknetv4: Enhancing fast sports object tracking with motion attention
+maps. Preprint, 2024.
+[6] Hao Xu, Arbind Agrahari Baniya, Sam Wells, Mohamed Reda Bouadjenek, Richard Dazely, and Sunil Aryal.
+Totnet: Occlusion-aware temporal tracking for robust ball detection in sports videos. Preprint, 2025.
+[7] Joao Carreira and Andrew Zisserman. Quo vadis, action recognition? a new model and the kinetics dataset. 2017
+IEEE Conference on Computer Vision and Pattern Recognition (CVPR), 2018.
+[8] Gedas Bertasius, Heng Wang, and Lorenzo Torresani. Is space-time attention all you need for video understanding?
+International Conference on Machine Learning (ICML), 2021.
+[9] Ze Liu, Jia Ning, Yue Cao, Yixuan Wei, Zheng Zhang, Stephen Lin, and Han Hu. Video swin transformer. In
+Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR), 2022.
+[10] Shih-En Wei, Varun Ramakrishna, Takeo Kanade, and Yaser Sheikh. Convolutional pose machines. 2016 IEEE
+Conference on Computer Vision and Pattern Recognition (CVPR), 2016.
+[11] Olaf Ronneberger, Philipp Fischer, and Thomas Brox. U-net: Convolutional networks for biomedical image
+segmentation. In International Conference on Medical Image Computing and Computer-Assisted Intervention
+(MICCAI), pages 234–241, 2015.
+[12] Alexey Dosovitskiy, Lucas Beyer, Alexander Kolesnikov, Dirk Weissenborn, Xiaohua Zhai, Thomas Unterthiner,
+Mostafa Dehghani, Matthias Minderer, Georg Heigold, Sylvain Gelly, et al. An image is worth 16x16 words:
+Transformers for image recognition at scale. In International Conference on Learning Representations (ICLR),
+2021.
+[13] Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N. Gomez, Lukasz Kaiser, and
+Illia Polosukhin. Attention is all you need. In Advances in Neural Information Processing Systems (NIPS), 2017.
+[14] Wenzhe Shi, Jose Caballero, Ferenc Huszár, Johannes Totz, Andrew P. Aitken, Rob Bishop, Daniel Rueckert, and
+Zehan Wang. Real-time single image and video super-resolution using an efficient sub-pixel convolutional neural
+network. In Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition (CVPR), 2016.
+[15] Ilya Loshchilov and Frank Hutter. Decoupled weight decay regularization. In International Conference on
+Learning Representations (ICLR), 2019.
+14

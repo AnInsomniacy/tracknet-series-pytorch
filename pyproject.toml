@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tracknet-series-industrial"
+version = "0.1.0"
+description = "Industrial PyTorch implementation of TrackNet V1-V5 family"
+requires-python = ">=3.10"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["tracknet*"]

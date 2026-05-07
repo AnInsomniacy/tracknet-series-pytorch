@@ -1,0 +1,76 @@
+{
+  "paper_id": "v2",
+  "source_pdf": "/Users/sekiro/Projects/personal/tracknet-series-pytorch/papers/v2.pdf",
+  "sha256": "6d48c7e79ba88ec89cf7fe323ce55dd4065e9348e62e865da1c7abbc15bd2143",
+  "page_count": 6,
+  "text": "text.txt",
+  "selected_figure_pages": [
+    3,
+    4
+  ],
+  "embedded_figures": [
+    {
+      "page": 4,
+      "xref": 58,
+      "path": "figures/page_004_figure_01_xref_58.jpeg",
+      "width": 1055,
+      "height": 906,
+      "size_bytes": 110449,
+      "sha256": "9fed4ccdd384cd7583002a98c8ed0edaeee5b83e9ff91fa6fba132af5b9ffcfa"
+    },
+    {
+      "page": 4,
+      "xref": 59,
+      "path": "figures/page_004_figure_02_xref_59.png",
+      "width": 423,
+      "height": 906,
+      "size_bytes": 28971,
+      "sha256": "1ef18930941ddbf164a4bf373b0983a92713012ad12f84a5d8e381ebb472033a"
+    },
+    {
+      "page": 4,
+      "xref": 60,
+      "path": "figures/page_004_figure_03_xref_60.jpeg",
+      "width": 461,
+      "height": 1229,
+      "size_bytes": 29672,
+      "sha256": "6d7e44f9ea15ab2c6ec5cf2c3cb70617705464f4b2871a86351bc6768c93b942"
+    },
+    {
+      "page": 4,
+      "xref": 61,
+      "path": "figures/page_004_figure_04_xref_61.jpeg",
+      "width": 1151,
+      "height": 411,
+      "size_bytes": 28537,
+      "sha256": "89a8144bdef3d51a938e32ce6d02041a02191796c384cea45a76b1512c58b4c6"
+    },
+    {
+      "page": 4,
+      "xref": 62,
+      "path": "figures/page_004_figure_05_xref_62.jpeg",
+      "width": 763,
+      "height": 839,
+      "size_bytes": 48026,
+      "sha256": "44ff116a0935e7061e3d4fb9c62b23d29cbb9314de2d6e8d6f8a44c7ca3097a3"
+    },
+    {
+      "page": 4,
+      "xref": 63,
+      "path": "figures/page_004_figure_06_xref_63.jpeg",
+      "width": 1151,
+      "height": 820,
+      "size_bytes": 48800,
+      "sha256": "211bf533699704ef0d5d6a13cd003e96b0e0abdfa8fbd8f609377a7abb0cb4cc"
+    },
+    {
+      "page": 4,
+      "xref": 64,
+      "path": "figures/page_004_figure_07_xref_64.jpeg",
+      "width": 1143,
+      "height": 839,
+      "size_bytes": 83470,
+      "sha256": "58c06b1f326ac08fca4044c128b70bbbc641d352833c7d2fb8cc578799c296ad"
+    }
+  ]
+}

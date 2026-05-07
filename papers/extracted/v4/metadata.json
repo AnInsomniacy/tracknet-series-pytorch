@@ -1,0 +1,48 @@
+{
+  "paper_id": "v4",
+  "source_pdf": "/Users/sekiro/Projects/personal/tracknet-series-pytorch/papers/v4.pdf",
+  "sha256": "1c98f6840d8be224a223617cba9b8ec7123975a0deebe8023f17f2e2cc82f44d",
+  "page_count": 17,
+  "text": "text.txt",
+  "selected_figure_pages": [
+    3
+  ],
+  "embedded_figures": [
+    {
+      "page": 3,
+      "xref": 290,
+      "path": "figures/page_003_figure_01_xref_290.png",
+      "width": 2990,
+      "height": 2948,
+      "size_bytes": 1509885,
+      "sha256": "7c1f66a53e1ad473fcf8d36c120f957a8a90e65007e12d69e96169e7354aa7a6"
+    },
+    {
+      "page": 3,
+      "xref": 292,
+      "path": "figures/page_003_figure_02_xref_292.png",
+      "width": 2990,
+      "height": 2948,
+      "size_bytes": 1868017,
+      "sha256": "9f49d1f698dd7efd1fcf0551fd792eedde853bdc6aa2a18c1850b785bf5e569b"
+    },
+    {
+      "page": 3,
+      "xref": 294,
+      "path": "figures/page_003_figure_03_xref_294.png",
+      "width": 2990,
+      "height": 2948,
+      "size_bytes": 1575038,
+      "sha256": "d53b3bff63cecfc135a95af48e12a822a34f45880d71498e9bd1ab8f392393ba"
+    },
+    {
+      "page": 3,
+      "xref": 296,
+      "path": "figures/page_003_figure_04_xref_296.png",
+      "width": 2990,
+      "height": 2948,
+      "size_bytes": 1943141,
+      "sha256": "7ea0b2209756cc7a1451b236d9fb6024873e8e1d1b61283975809d858a3471e8"
+    }
+  ]
+}

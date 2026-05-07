@@ -1,0 +1,19 @@
+inference:
+  video_path: data/raw/match1/video/rally1.mp4
+  checkpoint_path: outputs/train/tracknet_v2/checkpoints/best.pt
+  output_csv: outputs/predict/rally1_predictions.csv
+  output_video: outputs/predict/rally1_overlay.mp4
+  target_width: 512
+  target_height: 288
+  sequence_length: 3
+  target_frame_mode: all
+  include_background: false
+  threshold: 0.5
+  batch_size: 4
+  device: auto
+  frame_index_base: 0
+  trail_length: 12
+  # Optional V3 rectification:
+  # rectifier_checkpoint_path: outputs/train/tracknet_v3_rectifier/checkpoints/best.pt
+  # rectifier_sequence_length: 16
+  # rectifier_delta_y_pixels: 30.0

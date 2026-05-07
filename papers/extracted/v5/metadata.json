@@ -1,0 +1,78 @@
+{
+  "paper_id": "v5",
+  "source_pdf": "/Users/sekiro/Projects/personal/tracknet-series-pytorch/papers/v5.pdf",
+  "sha256": "807b7b11f6b05d01ed6d11fd5d7b2947f48f9e64e215e387822a314c5b9e3579",
+  "page_count": 14,
+  "text": "text.txt",
+  "selected_figure_pages": [
+    4,
+    5,
+    6,
+    7
+  ],
+  "embedded_figures": [
+    {
+      "page": 4,
+      "xref": 274,
+      "path": "figures/page_004_figure_01_xref_274.png",
+      "width": 2859,
+      "height": 665,
+      "size_bytes": 314139,
+      "sha256": "ba71904aba38b781fd52f5bc65a158dcd2aa7d2da4dc0ed59eb8e52033ef78cc"
+    },
+    {
+      "page": 4,
+      "xref": 275,
+      "path": "figures/page_004_figure_02_xref_275.jpeg",
+      "width": 1008,
+      "height": 548,
+      "size_bytes": 37958,
+      "sha256": "574422f2983034bbc39a2a475bacb39a7e48b613f520c23da2b16ebf39d6a663"
+    },
+    {
+      "page": 5,
+      "xref": 276,
+      "path": "figures/page_005_figure_03_xref_276.png",
+      "width": 2653,
+      "height": 1183,
+      "size_bytes": 832636,
+      "sha256": "21834f65a08fa4c49483e9b0ccf4657d4f106ef611eb7d8602025d01262450bc"
+    },
+    {
+      "page": 5,
+      "xref": 277,
+      "path": "figures/page_005_figure_04_xref_277.png",
+      "width": 2021,
+      "height": 810,
+      "size_bytes": 101655,
+      "sha256": "a90971800e9e6d58285935a677ffef374e80caf2e815328bcdb23047c5d6023c"
+    },
+    {
+      "page": 6,
+      "xref": 278,
+      "path": "figures/page_006_figure_05_xref_278.png",
+      "width": 2900,
+      "height": 945,
+      "size_bytes": 129621,
+      "sha256": "0159f556a998855643a53f2067fdb8db10afb30b5fa5e3585d6c58ec747b1921"
+    },
+    {
+      "page": 6,
+      "xref": 279,
+      "path": "figures/page_006_figure_06_xref_279.jpeg",
+      "width": 2560,
+      "height": 864,
+      "size_bytes": 326638,
+      "sha256": "eee4ab36a8139614b8306e55fedf850bdcea12ec73d384dd6bb4bd8ffc6ae3ba"
+    },
+    {
+      "page": 7,
+      "xref": 282,
+      "path": "figures/page_007_figure_07_xref_282.png",
+      "width": 2744,
+      "height": 956,
+      "size_bytes": 139132,
+      "sha256": "07363e739b1d6f51102adc8abc225e025ab81abce0b925e4a2877cf747b9927d"
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+model:
+  version: v2
+  sequence_length: 3
+  base_channels: 64
+  dropout: 0.0
+
+dataset:
+  processed_root: data/processed/tracknet_512x288
+  sequence_length: 3
+  model_version: v2
+  target_frame_mode: all
+  heatmap_mode: gaussian
+  sigma: 3.0
+  frame_stride: 1
+
+train:
+  experiment_name: tracknet_v2
+  output_root: outputs/train
+  epochs: 30
+  batch_size: 2
+  workers: 8
+  val_split: 0.2
+  optimizer: Adadelta
+  lr: 1.0
+  loss: wbce
+  device: auto
+  amp: true
+  seed: 26

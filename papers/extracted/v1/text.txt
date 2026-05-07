@@ -1,0 +1,1249 @@
+===== PAGE 1 =====
+TrackNet: A Deep Learning Network for Tracking
+High-speed and Tiny Objects in Sports Applications
+Yu-Chuan Huang
+I-No Liao
+Ching-Hsuan Chen
+Ts`ı-U´ı ˙Ik∗
+Wen-Chih Peng
+Department of Computer Science, College of Computer Science
+National Chiao Tung University
+1001 University Road, Hsinchu City 30010, Taiwan
+∗Email: cwyi@nctu.edu.tw
+Abstract—Ball trajectory data are one of the most
+fundamental and useful information in the evaluation of
+players’ performance and analysis of game strategies.
+Although vision-based object tracking techniques have
+been developed to analyze sport competition videos, it is
+still challenging to recognize and position a high-speed
+and tiny ball accurately. In this paper, we develop a deep
+learning network, called TrackNet, to track the tennis
+ball from broadcast videos in which the ball images are
+small, blurry, and sometimes with afterimage tracks or
+even invisible. The proposed heatmap-based deep learning
+network is trained to not only recognize the ball image
+from a single frame but also learn ﬂying patterns from
+consecutive frames. TrackNet takes images with the size
+of 640 × 360 to generate a detection heatmap from either
+a single frame or several consecutive frames to position
+the ball and can achieve high precision even on public
+domain videos. The network is evaluated on the video of
+the men’s singles ﬁnal at the 2017 Summer Universiade,
+which is available on YouTube. The precision, recall, and
+F1-measure of TrackNet reach 99.7%, 97.3%, and 98.5%,
+respectively. To prevent overﬁtting, 9 additional videos
+are partially labeled together with a subset from the
+previous dataset to implement 10-fold cross validation, and
+the precision, recall, and F1-measure are 95.3%, 75.7%,
+and 84.3%, respectively. A conventional image processing
+algorithm is also implemented to compare with TrackNet.
+Our experiments indicate that TrackNet outperforms con-
+ventional method by a big margin and achieves exceptional
+ball tracking performance. The dataset and demo video are
+available at https://nol.cs.nctu.edu.tw/ndo3je6av9/.
+Index Terms—Deep Learning, neural networks, tiny
+object tracking, heatmap, tennis, badminton
+I. INTRODUCTION
+Video considered as logs of visual sensors con-
+tains a large amount of information. Information
+extraction from videos has become a hot research
+topic in the areas of image processing and deep
+learning. In the applications of sports analyzing and
+athletes training, videos are helpful in the post-game
+review and tactical analysis. In professional sports,
+high-end cameras have been used to record high
+resolution and high frame rate videos and combined
+with image processing for referee assistance or data
+collection. However, this solution requires enormous
+resources and is not affordable for individuals or
+amateurs. Developing a low-cost solution for data
+acquisition from broadcast videos will be signiﬁcant
+for massive sports data collection.
+Ball trajectory data are one of the most funda-
+mental and useful information for game analysis.
+However, for some sports such as tennis, badminton,
+baseball, etc., the ball is not only small but also may
+ﬂy as fast as several hundred kilometers per hour,
+resulting in tiny and blurry images. That makes the
+ball tracking task becomes more challenging than
+other sports. In this paper, we design a heatmap-
+based deep learning network, called TrackNet, to
+precisely position ball of tennis and badminton on
+broadcast videos or videos recorded by consumer’s
+devices such as smartphones. TrackNet overcomes
+the issues of blurry and remnant images and can
+even detect occluded ball by learning its trajectory
+patterns. The proposed network can be applied to
+other ball-based sports and help both amateurs and
+professional teams collect data with a moderate
+budget.
+Conventional image recognition is usually based
+on the object’s appearance features such as shape,
+color, size, etc., or statistical features such as HOG,
+SIFT, etc. Due to a relatively long shutter time of
+arXiv:1907.03698v1  [cs.LG]  8 Jul 2019
+
+===== PAGE 2 =====
+consumer or prosumer cameras, images of high-
+speed objects are prone to suffer from afterimage
+or blur issues, resulting in poor image recognition
+accuracy. The performance of ball tracking can be
+improved by pairing candidates from frame to frame
+according to trajectory models to ﬁnd the most
+possible one [1]. In addition, a classical technique
+in image processing to improve image quality is
+by fusing multiple low-quality images. Based on
+the above observations, instead of using the rule-
+based techniques, we propose to adopt deep learning
+network to recognize the shape of the ball and
+learn the trajectory patterns by applying multiple
+consecutive frames to solve the mentioned issues.
+Object classiﬁcation and detection are two of the
+earliest studies in deep learning. VGG-16 [2] is
+one of the most popular networks for feature map
+encoding. To detect and classify multiple objects in
+an image, the R-CNN family [3] [4] [5] structurally
+examine the picture in two stages. It ﬁrstly selects
+many areas that may contain interesting objects,
+called Region of Interests (RoIs), and then applies
+object detection and classiﬁcation techniques on
+these regions. However, its performance cannot ful-
+ﬁll the needs of real-time applications. To speed up,
+the YOLO family [6] develops a one-stage end-to-
+end approach to detect objects in a limited search
+space, signiﬁcantly reducing the computing time.
+The streamlined version of Tiny YOLO can even run
+on the Raspberry Pi. Compared to the block-based
+algorithms, Fully Convolutional Networks (FCN)
+proceeds pixel-wise classiﬁcation. To compensate
+for the size reduction of the feature map during the
+encoding process, upsampling and DeconvNet [7]
+are often used to decode the feature map, generating
+an original size of the data array.
+In this paper, a deep learning network, called
+TrackNet, is proposed to realize a precise trajec-
+tory tracking network. Firstly, VGG-16 is adopted
+to generate the feature map. Different from other
+deep learning networks, TrackNet can take multiple
+consecutive frames as input. In this way, TrackNet
+learns not only the features of the ball but also the
+characteristics of ball trajectories to enhance its ca-
+pability of object recognition and positioning. Since
+images are downsampled and encoded by pooling
+layers, the network follows the upsampling mech-
+anism of FCN to generate the heatmap for object
+detection. At last, the position of our target object
+is calculated based on the heatmap generated by the
+deep learning network. To meet the characteristics
+of tennis and badminton games, our calculation and
+evaluation are based on the assumption that there is
+at most one ball on the court.
+To evaluate the proposed network, we have la-
+beled 20, 844 frames from the broadcast of men’s
+singles ﬁnal at the 2017 Summer Universiade. To
+assess the performance of the proposed consecu-
+tive input frames technique, both single-frame and
+multiple-frame versions of TrackNet are imple-
+mented. Along with the conventional image recog-
+nition algorithm [1], a comprehensive comparison
+among different models is performed. Experiments
+indicate that the proposed TrackNet outperforms the
+conventional image recognition algorithm and effec-
+tively locates fast-moving tennis ball from broadcast
+sport competition videos. Moreover, to prevent the
+notorious overﬁtting issue that happens frequently
+in deep learning solutions, additional data from
+9 tennis games on different courts are added to
+the training dataset, including grass court, red clay
+court, hard court, etc. Additionally, to explore the
+model extensibility, badminton tracking by Track-
+Net is evaluated. We have labeled 18, 242 frames
+from the video of 2018 Indonesia Open Final - TAI
+Tzu Ying vs CHEN YuFei. Although badminton
+travels much faster than tennis, our experimental
+results exhibit a decent performance.
+The critical contribution of TrackNet comes from
+its capability of precisely tracking fast-moving and
+tiny objects by learning the dynamic behavior of the
+trajectory. In the tennis tracking application, 10-fold
+cross validation results in an outstanding perfor-
+mance of 95.3% precision, 75.7% recall, and 84.3%
+F1-measure. Such capability shows great potential
+in expanding the variety of computer vision applica-
+tions. The rest of the paper is organized as follows.
+Section II provides an introduction to the relevant
+researches and the convolutional neural network.
+Section III introduces the datasets used in this paper.
+Section IV elaborates the proposed deep learning
+network and Gaussian heatmap techniques. Section
+V provides experimental results and performance
+evaluation. At last, Section VI concludes this paper.
+2
+
+===== PAGE 3 =====
+II. RELATED WORKS
+In recent years, the analysis of player perfor-
+mance and game tactics based on the trajectory
+data of balls and players has received more and
+more attention [8] [9] [10] [11]. Many tracking
+algorithms and systems have been developed to
+compute and collect the trajectory data. Current
+commercial solutions mainly rely on high resolution
+and high frame rate video, resulting in high hard-
+ware investment. For example, the Hawk-Eye sys-
+tem [12] has been extensively used in professional
+competitions to calculate ball trajectories and assist
+the referee in clarifying controversial calls through
+3D visual depictions. Nonetheless, the system has to
+deploy high-end cameras with dedicated operators
+at selected locations and angles. The expense is too
+high for non-professional teams.
+Attempting to position the ball from sports com-
+petition videos has been studied for years. However,
+since the ball size is relatively small, it is prone to be
+confused with objects having similar color or shape,
+causing false positives. Furthermore, due to the high
+moving speed of the ball, the resulting image is
+usually blurry, inducing false negatives. By explor-
+ing the trajectory pattern from consecutive frames,
+the ball positioning can be effectively improved.
+In addition, the ﬂight trajectory itself possesses
+important information and is a subject in many
+pieces of research [13]. For instance, combining
+multiple cameras with 3D technology for tennis
+detection [14], tracking tennis by particle ﬁlter in
+low-quality ﬁlms [15], and adopting two-layer data
+association approach to calculate the most likely
+ball trajectory from the results of failure detection
+in the frame-by-frame image processing [16] are
+enlightening studies.
+The success of deep learning techniques in image
+classiﬁcation [2] [17] encourages more researchers
+to adopt these methods to solve various problems
+such as object detection and interception [5] [6]
+[18], computer games, network security, activity
+recognition [19] [20], text and image semantic anal-
+ysis, and smart stores. The infrastructure of the deep
+learning network is a structured and huge convolu-
+tional neural network trained with a large amount
+of labeled data. The most common operations of
+CNNs include convolution, rectiﬁer, pooling/down-
+sampling, and deconvolution/up-sampling. A soft-
+max layer is usually used as the output layer.
+For example, the widely used VGG-16 [2] mainly
+consists of convolutional, maximum pooling, and
+ReLU layers. Conceptually, front-end layers learn
+to identify simple geometric features, and back-end
+layers are trained to identify object features.
+In CNNs, each layer is a W × H × D data array.
+W, H, and D denote the width, height, and depth
+of the data array, respectively. The convolution
+operation is a ﬁlter with a kernel of size w × h × D
+across the W × H range with the stride parameter
+s being set as 1 in many applications. To avoid
+information loss near the boundary or maintain the
+size of the output data array, columns and rows of
+the data array can be padded with zero by setting the
+padding parameter p. Figure 1 depicts the relevant
+parameters of the convolution operation. Let W ′ and
+H′ denote the width and height of the next layer.
+Then,
+W ′ = W + 2p −w
+s
++1 and H′ = H + 2p −h
+s
++1.
+Fig. 1. Convolution operation in deep learning networks.
+Since the convolution operation is linear and
+cannot effectively capture nonlinear behaviors, an
+activation function called rectiﬁer is introduced to
+capture nonlinear behaviors. The Rectiﬁed Linear
+Unit (ReLU) is the most commonly used activation
+function in deep learning models. If the input value
+is negative, the function returns 0; otherwise, the
+function returns the input value. ReLU can be
+expressed as f (x) = max(0, x). Maximum pooling
+provides the functionality of down-sampling and
+feature fusion. Maximum pooling fuses features by
+encoding data via down-sampling. The block of
+data will be represented only by the largest one.
+After pooling, the data size is reduced. On the other
+3
+
+===== PAGE 4 =====
+hand, to achieve pixel-by-pixel classiﬁcation, up-
+sampling is necessary to reconstruct an output with
+the same size as the original image [21] [22]. In up-
+sampling, samples are duplicated to expand the data
+size. Batch normalization is a widely used technique
+to speed up the training process. Each W × H data
+array is independently standardized into a normal
+distribution.
+Backward propagation is commonly used in train-
+ing neural networks to learn the ﬁlter coefﬁcients.
+Firstly, forward propagation is performed to have
+a preliminary prediction. Then, compared the pre-
+diction with the ground truth, a loss function will
+be evaluated. Finally, the weights of the model,
+i.e., the ﬁlter coefﬁcients, are updated according
+to the loss by the gradient descent method. Chain
+rule is adopted to calculate the gradient of the loss
+function layer by layer. The process will be repeated
+again and again until a certain number of repetitions
+is reached or the loss falls below an acceptable
+threshold. The design of the loss function is an
+important factor that affects the training efﬁciency
+and the performance of the network. Commonly
+used loss functions include Root Mean Square Error
+(RMSE) and cross-entropy.
+In this paper, we propose a deep learning network
+named TrackNet to detect tennis and badminton
+on broadcast sport competition videos. By training
+with consecutive input frames, TrackNet can not
+only recognize the ball but also learn its trajectory
+pattern. A heatmap which is ideally a Gaussian
+distribution centered on the ball image is then
+generated by TrackNet to indicate the position of
+the ball. The idea of exploiting heatmap for object
+detection has been adopted in many studies [23]
+[24].
+To compare and evaluate the performance of
+TrackNet, we implement Archanas algorithm [1]
+which uses conventional image processing tech-
+niques to detect tennis ball. Archana’s algorithm
+ﬁrstly smooths the image of each frame by a median
+ﬁlter to remove noise. After a background model
+is calculated, background subtraction is performed
+to obtain the foreground. Then, the difference be-
+tween frames by logical AND operation is examined
+to identify fast-moving foreground objects. Those
+objects are compared with shape, size, and aspect
+ratio of the tennis ball and selected by applying
+TABLE I
+SEGMENTS OF LABEL FILES.
+...
+0008.jpg, 2, 727, 447, 0
+0009.jpg, 1, 735, 457, 0
+0010.jpg, 1, 722, 433, 1
+0011.jpg, 1, 707, 403, 0
+...
+0029.jpg, 1, 555, 220, 0
+0030.jpg, 1, 550, 218, 2
+0031.jpg, 1, 547, 206, 0
+...
+dilation and erosion to generate candidates. To ﬁlter
+out wrong candidates, in our implementation, a
+fully-connected neural network is trained to classify
+candidates into positive and negative categories. The
+one that has the highest probability in the positive
+category is selected, indicating the position of the
+ball.
+III. DATASET
+Our ﬁrst dataset is from the broadcast video of
+the tennis men’s singles ﬁnal at the 2017 Summer
+Universiade. The resolution, frame rate, and video
+length are 1280 × 720, 30 fps, and 75 minutes,
+respectively. By screening out unrelated frames, 81
+game-related clips are segmented and each of them
+records a complete play, starting from ball serving to
+score. There are 20, 844 frames in total. Each frame
+possesses the following attributes: ”Frame Name”,
+”Visibility Class”, ”X”, ”Y”, and ”Trajectory Pat-
+tern”. Table I is pieces of label ﬁles.
+”Frame Name” is the name of the frame ﬁles.
+”Visibility Class”, VC for short, indicates the visi-
+bility of the ball in each frame. The possible values
+are 0, 1, 2, and 3. V C = 0 implies the ball is not
+within the frame. V C = 1 implies the ball can be
+easily identiﬁed. V C = 2 implies the ball is in the
+frame but can not be easily identiﬁed. For example,
+as shown in Figure 2, the ball in 0079.jpg is hardly
+visible since the color of the tennis ball is similar
+to the text ”Taipei” on the court. However, with the
+help of neighboring frames, 0078.jpg and 0080.jpg,
+the unclear ball position of 0079.jpg can be labeled.
+Figure 2 (d), (e), and (f) illustrate the labeling
+results. V C = 3 implies the ball is occluded by
+4
+
+===== PAGE 5 =====
+other objects. For example, as shown in Figure 3, the
+ball in 0139.jpg is occluded by the player. Similarly,
+based on the information from neighboring frames,
+0138.jpg and 0140.jpg, the ball position of 0139.jpg
+can be estimated. Figure 3 (d), (e), and (f) illustrate
+the labeling results. In the dataset, the number of
+frames of V C = 0, 1, 2, 3 are 659, 18035, 2143,
+and 7, respectively.
+Fig. 2. The ball image is hardly visible.
+Fig. 3. The ball is occluded by the player.
+”X” and ”Y” indicate the coordinate of tennis in
+the pixel coordinate. Due to the high moving speed,
+tennis images in the broadcast video may be blurry
+and even have afterimage trace. In such cases, ”X”
+and ”Y” are considered as the latest position of
+the ball’s trace. For example, as shown in Figure
+4, the ball is ﬂying from Player1 to Player2 with a
+prolonged trace and the red dot indicates the labeled
+coordinate.
+”Trajectory Pattern” indicates the ball movement
+types and are classiﬁed into three categories: ﬂying,
+Fig. 4. An example of the prolonged tennis trace.
+hit, and bouncing. They are labeled by 0, 1, and 2,
+respectively. Figure 5 is an example of striking a
+ball. The ball is ﬂying at 0021.jpg and 0022.jpg. At
+0023.jpg, the ball is labeled as hit. Figure 6 shows a
+bouncing case. The ball has not reached the ground
+at 0007.jpg and 0008.jpg. At 0009.jpg, the ball hits
+the ground and is labeled as bouncing.
+Fig. 5. A hit case: (a) and (b) are labeled as ﬂying, and (c) is labeled
+as hit.
+Fig. 6. A bouncing case: (a) and (b) are labeled as ﬂying, and (c)
+is labeled as bouncing.
+To enrich the variety of training dataset, addi-
+tional 16, 118 frames are collected. These frames
+came from 9 videos recorded at different tennis
+courts, including grass court, red clay court, hard
+court etc. By learning diverse scenarios, the deep
+5
+
+===== PAGE 6 =====
+learning model is expected to recognize tennis ball
+at various courts. That increases the robustness
+of the model. Further details will be presented in
+Section V.
+In addition to tennis, to explore the versatility
+of the proposed TrackNet in the applications of
+high-speed and tiny objects tracking, a trial run
+on badminton match video is performed. Tracking
+badminton is more challenging than tracking tennis
+since the speed of badminton is much faster than
+tennis. The fastest serve according to the ofﬁcial
+records from the Association of Tennis Profession-
+als is John Isner’s 253 kilometers per hour at the
+2016 Davis Cup. On the other hand, the fastest
+badminton hit in competition is Lee Chong Wei’s
+417 kilometers per hour smash at the 2017 Japan
+Open according to Guinness World Records, which
+is over 1.6 times faster than tennis. Besides, in
+professional competitions, the speed of badminton
+is frequently over 300 kilometers per hour. The
+faster the object moves, the more difﬁcult it is to be
+tracked. Hence, it is expected that the performance
+will degrade for badminton compared with tennis.
+Our badminton dataset comes from a video of
+the badminton competition of 2018 Indonesia Open
+Final - TAI Tzu Ying vs CHEN YuFei. The reso-
+lution is 1280 × 720 and the frame rate is 30 fps.
+Similarly, unrelated frames such as commercial or
+highlight replays are screened out. The resulting
+total number of frames is 18, 242. We label each
+frame with the following attributes: ”Frame Name”,
+”Visibility Class”, ”X”, and ”Y”.
+In badminton dataset, ”Visibility Class” is clas-
+siﬁed into two categories, V C = 0 and V C = 1.
+V C = 0 means the ball is not in the frame and
+V C = 1 means the ball is in the frame. Unlike
+our tennis dataset, we do not classify V C = 2
+and V C = 3 categories since the badminton moves
+so fast that blurry image happens very frequently.
+Therefore, in the badminton dataset, V C
+= 1
+includes all status of badminton as long as the ball
+is within the frame no matter it is clearly visible or
+hardly visible.
+”X” and ”Y” indicate the coordinate of bad-
+minton. Similar to tennis, ”X” and ”Y” are deﬁned
+by the latest position of the ball’s trace considering
+its moving direction if the image is prolonged. In
+badminton video, prolonged trace often happens and
+sometimes we could hardly identify the position of
+the ball. An example of how we label the prolonged
+images is shown in Figure 7.
+Fig. 7. An example of the prolonged badminton trace.
+IV. TRACKNET
+Fig. 8. An example of the detection heatmap.
+TrackNet is composed of a convolutional neural
+network (CNN) followed by a deconvolutional neu-
+ral network (DeconvNet) [7]. It takes consecutive
+frames to generate a heatmap indicating the position
+of the object. The number of input frames is a
+network parameter. One input frame is considered
+the conventional CNN network. TrackNet with more
+than one input frame can improve the moving
+object detection by learning the trajectory pattern.
+For the purpose of evaluation, two networks are
+implemented. One is with single frame input, and
+the other is with three consecutive frames input.
+TrackNet utilizes the heatmap-based CNN which
+has been proved useful in several applications [23]
+[24]. TrackNet is trained to generate a probability-
+like detection heatmap having the same resolution as
+the input frames. The ground truth of the heatmap is
+an ampliﬁed 2D Gaussian distribution located at the
+6
+
+===== PAGE 7 =====
+Fig. 9. The architecture of the proposed TrackNet.
+center of the tennis ball. The coordinates of the ball
+are available in the labeled dataset and the variance
+of the Gaussian distribution refers to the diameter
+of tennis ball images. Let (x0, y0) be the ball center
+and the heatmap function is expressed as
+G (x, y) =
+
+1
+2πσ2e−(x−x0)2+(y−y0)2
+2σ2
+  2πσ2 · 255
+
+,
+where the ﬁrst part is a Gaussian distribution cen-
+tered at (x0, y0) with variance of σ2, and the second
+part scales the value to the range of [0, 255]. σ2 = 10
+is used in our implementation since the average ball
+radius is about 5 pixels, roughly corresponding to
+the region of G (x, y) ≥128. Figure 8 is a visualized
+heatmap function of a tennis ball.
+The implementation details of TrackNet is illus-
+trated in Figure 9 and Table II. The input of the
+proposed network can be some number of consec-
+utive frames. The ﬁrst 13 layers refer to the design
+of the ﬁrst 13 layers of VGG-16 [2] for object
+classiﬁcation. The 14-24 layers refer to DeconvNet
+[7] for semantic segmentation. To realize the pixel-
+wise prediction, upsampling is applied to recover
+the information loss from maximum pooling layers.
+Symmetric numbers of upsampling layers and max-
+imum pooling layers are implemented.
+The ﬁnal black-white binary detection heatmap
+is not directly available at the output of the deep
+learning network. The network outputs a detection
+heatmap that has continuous values within the range
+of [0, 255] for each pixel. Let L (i, j, k) denote the
+data array of coordinates within (0, 0) ≤(i, j) ≤
+TABLE II
+NETWORK PARAMETERS OF TRACKNET.
+Layer
+Filter Size
+Depth
+Padding
+Stride
+Activation
+Conv1
+3 × 3
+64
+2
+1
+ReLU+BN
+Conv2
+3 × 3
+64
+2
+1
+ReLU+BN
+Pool1
+2 × 2 max pooling and Stride = 2
+Conv3
+3 × 3
+128
+2
+1
+ReLU+BN
+Conv4
+3 × 3
+128
+2
+1
+ReLU+BN
+Pool2
+2 × 2 max pooling and Stride = 2
+Conv5
+3 × 3
+256
+2
+1
+ReLU+BN
+Conv6
+3 × 3
+256
+2
+1
+ReLU+BN
+Conv7
+3 × 3
+256
+2
+1
+ReLU+BN
+Pool3
+2 × 2 max pooling and Stride = 2
+Conv8
+3 × 3
+512
+2
+1
+ReLU+BN
+Conv9
+3 × 3
+512
+2
+1
+ReLU+BN
+Conv10
+3 × 3
+512
+2
+1
+ReLU+BN
+UpS1
+2 × 2 upsampling
+Conv11
+3 × 3
+512
+2
+1
+ReLU+BN
+Conv12
+3 × 3
+512
+2
+1
+ReLU+BN
+Conv13
+3 × 3
+512
+2
+1
+ReLU+BN
+UpS2
+2 × 2 upsampling
+Conv14
+3 × 3
+128
+2
+1
+ReLU+BN
+Conv15
+3 × 3
+128
+2
+1
+ReLU+BN
+UpS3
+2 × 2 upsampling
+Conv16
+3 × 3
+64
+2
+1
+ReLU+BN
+Conv17
+3 × 3
+64
+2
+1
+ReLU+BN
+Conv18
+3 × 3
+256
+2
+1
+ReLU+BN
+Softmax
+(639, 359) and depth within 0 ≤k ≤255. The
+softmax layer calculates the probability distribution
+of depth k from possible 256 grayscale values. Let
+P (i, j, k) denote the probability of depth k at (i, j).
+7
+
+===== PAGE 8 =====
+The softmax function is given by
+P (i, j, k) =
+eL(i,j,k)
+P255
+l=0 eL(i,j,l).
+Based on the probability given by the softmax
+layer on each pixel, the depth k with the highest
+probability is selected as the heatmap value of the
+pixel. For each pixel, let
+h (i, j) = arg max
+k
+P (i, j, k)
+denote the softmax layer output at (i, j), indicating
+the selected grayscale value at (i, j). Once the
+complete continuous detection heatmap is gener-
+ated, the coordinate of the ball can be determined
+by the following two steps. The ﬁrst step is to
+pixel-wisely convert the heatmap into a black-white
+binary heatmap by the threshold t. If a pixel has a
+value larger than or equal to t, the pixel is set to
+255. On the contrary, if a pixel has a value smaller
+than t, the pixel is set to 0. Based on the previous
+discussion regarding the mean radius of a tennis
+ball, threshold t is set as 128. The second step is to
+exploit the Hough Gradient Method [25] to ﬁnd the
+circle on the black-white binary detection heatmap.
+If exactly one circle is identiﬁed, the centroid of
+the circle is returned. In other cases, the heatmap is
+considered no ball detected.
+During the training phase, the cross-entropy func-
+tion is used to calculate the loss function based on
+P (i, j, k). The corresponding ground truth function
+denoted by Q (i, j, k) is given by
+Q (i, j, k) =
+
+1, if G (i, j) = k;
+0, otherwise.
+Let HQ (P) denote the loss function. Then,
+HQ (P) = −
+X
+i,j,k
+Q (i, j, k) log P (i, j, k) .
+V. EXPERIMENTS
+The experiment setup is as followed. The tennis
+dataset elaborated in Section III is used to evaluate
+the performance of Archana’s algorithm, a conven-
+tional image processing technique, and the proposed
+TrackNet. The dataset contains 20, 844 frames and
+is randomly divided to the training set and test set.
+70% frames are the training set and 30% frames
+are the test set. To speed up the training speed, all
+TABLE III
+KEY PARAMETERS USED IN MODEL TRAINING.
+Parameters
+Setting
+Learning rate
+1.0
+Batch size
+2
+Steps per epoch
+200
+epochs
+500
+Initial weights
+random uniform
+Range of initial weights
+[−0.05, 0.05]
+frames are resized from 1280 × 720 to 640 × 360.
+To optimize weights of the network, the Adadelta
+optimizer [26] is applied. Table III summarizes
+other key parameters. Among these parameters, the
+number of epochs is one of the most critical factors
+in model training. Underﬁtting happens if it is too
+small, while overﬁtting happens if it is too large.
+For TrackNet, the characteristic of loss versus the
+number of epochs is shown in Figure 10. Based on
+the simulation, we select 500 epochs as our optimal
+value to prevent both underﬁtting and overﬁtting.
+Fig. 10. The loss curve of TrackNet model training.
+To compare the performance of TrackNet frame-
+works with one input frame and three consecutive
+input frames, two versions of TrackNet are imple-
+mented. For convenience, TrackNet that takes one
+input frame is named as Model I and TrackNet that
+takes three consecutive input frames is named as
+Model II. For Model II, three consecutive frames
+are used to detect the ball coordinate in the last
+frame. During the training phase, three consecutive
+frames are considered a training sequence if the last
+frame belongs to the training set. Likewise, three
+consecutive frames are considered a test sequence
+if the last frame belongs to the test set. Note that
+8
+
+===== PAGE 9 =====
+TABLE IV
+PERFORMANCE SUMMARY.
+Archana’s
+TrackNet Model I
+TrackNet Model II
+TrackNet Model II’
+VC0
+VC1
+VC2
+VC3
+VC0
+VC1
+VC2
+VC3
+VC0
+VC1
+VC2
+VC3
+VC0
+VC1
+VC2
+VC3
+TP
+-
+4046
+418
+0
+-
+4933
+497
+0
+-
+5223
+565
+2
+-
+5234
+598
+1
+FP
+201
+334
+29
+1
+1
+221
+20
+0
+0
+3
+3
+0
+4
+6
+7
+2
+TN
+9
+-
+-
+-
+195
+-
+-
+-
+210
+-
+-
+-
+206
+-
+-
+-
+FN
+-
+947
+214
+6
+-
+241
+139
+7
+-
+101
+93
+5
+-
+87
+56
+4
+Total
+210
+5327
+661
+7
+196
+5395
+656
+7
+210
+5327
+661
+7
+210
+5327
+661
+7
+TABLE V
+ACCURACY METRICS OF DIFFERENT MODELS.
+Model
+Precision
+Recall
+F1-measure
+Archana’s [1]
+92.5%
+74.5%
+82.5%
+TrackNet Model I
+95.7%
+89.6%
+92.5%
+TrackNet Model II
+99.8%
+96.6%
+98.2%
+TrackNet Model II’
+99.7%
+97.3%
+98.5%
+TrackNet framework is scalable. Any number of
+consecutive input frames are allowed.
+To deﬁne a proper speciﬁcation for prediction
+error, the size of the tennis is investigated. The
+diameter of tennis images in the video ranges from
+2 to 12 pixels and the mean diameter is around
+5 pixels. Since the prediction error within a unit
+size of the ball does not cause misleading in trajec-
+tory identiﬁcation, we deﬁne the positioning error
+(PE) speciﬁcation as 5 pixels to indicate whether
+a ball is accurately detected. Detections with PE
+larger than 5 pixels belong to false predictions.
+PE is deﬁned by the Euclidean distance between
+the model prediction and the ground truth. Figure
+11 shows the PE distribution of TrackNet models.
+The x-axis represents PE in the unit of pixels and
+the y-axis is the percentage of occurrence. x = 0
+stands for perfect detection. x = 1 means PE
+lies in 0 < PE ≤1, x = 2 means PE lies in
+1 < PE ≤2, and so on. Note that occurrence
+percentages of PE > 5 of Model I and Model II
+are 4.3% and 0.1%, respectively. That is, 95.7% and
+99.9% detections of Model I and Model II fulﬁll the
+speciﬁcation.
+The Archana’s algorithm [1], an image processing
+technique developed by Archana and Geetha, is
+implemented for comparison. The prediction details
+of Archana’s algorithm, TrackNet Model I, and
+Fig. 11. The distribution of the positioning error.
+TrackNet Model II are shown in Table IV, where TP,
+FP, TN, and FN stand for true positive, false posi-
+tive, true negative, and false negative, respectively.
+The numbers are grouped by ”Visibility Class”, VC.
+False positive of VC1, VC2, and VC3 stands for
+predictions with PE larger than 5 pixels. False
+negative of VC1, VC2, and VC3 means there is
+no ball detected or there is more than one ball
+detected when there is actually one ball in the frame.
+Note that since TrackNet Model I and TrackNet
+Model II utilize a different number of input frames,
+the training set and test set numbers are different.
+Archanas and TrackNet Model II’ follow the same
+training set and test set as TrackNet Model II.
+It is observed that compared to Archana’s algo-
+rithm, both TrackNet Model I and TrackNet Model
+II signiﬁcantly reduce false positives and false neg-
+atives, resulting in an increase of both true positives
+and true negatives. The comparison presents an ex-
+ceptional object detection capability of deep learn-
+ing networks over conventional image processing
+algorithms. In addition, TrackNet Model II performs
+even better than TrackNet Model I, proving that
+9
+
+===== PAGE 10 =====
+TABLE VI
+ACCURACY ANALYSIS OF BADMINTON TRACKING.
+Model
+Precision
+Recall
+F1-measure
+TrackNet-Tennis
+75.8%
+22.9%
+35.2%
+TrackNet-Badminton
+85.0%
+57.7%
+68.7%
+training TrackNet with consecutive input frames can
+further improve its dynamic object tracking ability,
+especially for small objects. Moreover, TrackNet
+Model II even correctly positions occluded balls
+occasionally. 2 out of 7 occluded balls are precisely
+detected. This discovery directly exhibits that con-
+secutive frames provide critical information for the
+network to learn trajectory patterns of the interested
+object. By extracting information from neighboring
+frames, TrackNet Model II not only enhances its
+tracking precision on normal objects but also on
+blurry or occluded objects.
+The overall performance in terms of precision,
+recall, and F1-measure are summarized in Table V.
+These three metrics are deﬁned by
+Precision =
+# of True Positive
+# of True Positive + False Positive,
+Recall =
+# of True Positive
+# of VC1+VC2+VC3, and
+F1-measure = 2(Precision × Recall)
+Precision + Recall .
+The Archana’s algorithm reaches 92.5% precision,
+74.5% recall, and 82.5% F1-measure. With the
+help of powerful deep learning network, TrackNet
+Model I outperforms the Archana’s algorithm and
+reaches 95.7% precision, 89.6% recall, and 92.5%
+F1-measure. By learning how to extract trajec-
+tory information from neighboring frames, TrackNet
+Model II further improves the performance and
+achieves 99.8% precision, 96.6% recall, and 98.2%
+F1-measure.
+To prevent the overﬁtting issue that frequently
+happens in deep learning solutions, another 16, 118
+frames are added to the training set. These 16, 118
+frames are collected from an additional 9 videos
+recorded at different tennis courts, including grass
+court, red clay court, hard court etc. The model
+trained by the enriched training set is named as
+TrackNet Model II’. TrackNet Model II’ follows
+the same training logic as TrackNet Model II with
+the only difference in the variety of training set.
+The prediction details are shown in Table IV. As
+expected, the performance of TrackNet Model II’
+is similar to TrackNet Model II on the same test
+set as shown in Table V. TrackNet Model II’
+achieves 99.7% precision, 97.3% recall, and 98.5%
+F1-measure. Furthermore, 10-fold cross validation
+is adopted on TrackNet Model II’ for the pur-
+pose of safety and comprehensive analysis. At last,
+TrackNet Model II’ with 10-fold cross validation
+reaches 95.3% precision, 75.7% recall, and 84.3%
+F1-measure.
+In addition to tennis, we also apply the proposed
+TrackNet to the badminton dataset as introduced in
+Section III. The badminton dataset contains 18, 242
+frames with the resolution of 1280×720. Similarly,
+all frames are resized from 1280×720 to 640×360
+to speed up the training process. The dataset is
+randomly divided to the training set and test set.
+70% frames are the training set and 30% frames are
+the test set. For badminton dataset, model training
+parameters, including learning rate, batch size, num-
+ber of epochs, etc., are set to the same values used
+in the training of tennis dataset as shown in Table
+III.
+Before evaluating TrackNet on badminton, the
+speciﬁcation of a correct detection is deﬁned by
+analyzing the dimension of badminton images in
+the video. Unlike tennis, badminton is not spherical,
+resulting in a larger size variation. We deﬁne the
+diameter of a badminton image by taking an average
+on its largest length and width. The image exists
+in two extreme cases. One happens when the bad-
+minton moves toward the camera at the backcourt
+and the other happens when the badminton moves
+laterally at the frontcourt. In our dataset, such cases
+result in a large variation in images’ diameter rang-
+ing from 3 to 24 pixels. Since the mean diameter is
+around 7.5 pixels, we deﬁne the PE speciﬁcation as
+7.5 pixels to indicate whether a badminton image is
+accurately detected. Detections with PE larger than
+7.5 pixels belong to incorrect predictions. Compared
+with tennis that has PE speciﬁcation of 5 pixels, the
+PE speciﬁcation of badminton seems to be released.
+The main reason is that images of badminton are
+larger than tennis in the video since the badminton
+court is smaller than the tennis court. Therefore, the
+10
+
+===== PAGE 11 =====
+camera uses a smaller focal length to capture the
+entire court, resulting in larger images of ball and
+players.
+To evaluate the badminton tracking ability of
+TrackNet, we adopt the transfer learning idea that
+directly applies the well-trained TrackNet model by
+tennis dataset for badminton trajectories recogni-
+tion. Here, we name the transfer learning mode as
+TrackNet-Tennis which is trained by tennis dataset
+using three consecutive input frames. As shown in
+Table VI, for badminton tracking, TrackNet-Tennis
+only achieves precision, recall, and F1-measure of
+75.8%, 22.9%, and 35.2%, respectively. Although
+the precision seems acceptable, the recall is too
+poor to be used. Such a low recall is due to
+a large number of false negatives, implying that
+the badminton cannot be recognized in many cir-
+cumstances. The main reason causing such poor
+performance lies in the fundamental characteristics
+difference between tennis and badminton, including
+velocity, trajectories, shape, etc. To verify the feasi-
+bility of TrackNet framework on badminton track-
+ing, we train another model named as TrackNet-
+Badminton which is trained by badminton dataset
+using three consecutive input frames. As shown in
+Table VI, TrackNet-Badminton reaches precision,
+recall, and F1-measure of 85.0%, 57.7%, and 68.7%,
+respectively. As expected, TrackNet-Badminton is
+able to learn the features of badminton, leading to
+signiﬁcant performance improvement.
+Furthermore, when we compare tennis and bad-
+minton tracking performance using TrackNet frame-
+work, it can be observed that tennis tracking out-
+performs badminton tracking by a noticeable mar-
+gin. This is because badminton travels much faster
+than tennis, resulting in much more unclear object
+images in badminton videos. As elaborated in Sec-
+tion III, the fastest recorded badminton moves in
+417 kilometers per hour, while the fastest recorded
+tennis moves in 253 kilometers per hour. Such an
+enormous increase in velocity causes performance
+degradation especially in the aspect of the recall
+due to high false negatives. High traveling speed
+makes the badminton move across long distance
+within only a few frames. The property of dynamic
+trajectories in such high speed becomes hard to
+recognize by the model. In addition to the absolute
+speed, badminton possesses a much higher variation
+in traveling speed than tennis. For example, in
+badminton, a drop stroke and a smash stroke have a
+signiﬁcant difference in velocity. Such extreme sce-
+narios commonly happen during a badminton com-
+petition, making the model hard to ﬁt both scenarios
+perfectly. Nonetheless, although the performance in
+tracking badminton is not as phenomenal as tennis,
+achieving a precision of 85.0% is accurate enough to
+correctly depict all trajectories in the game. Future
+research on TrackNet improvement in the aspects of
+identifying trajectories of extreme fast objects and
+learning distinct patterns caused by signiﬁcant speed
+variation will be conducted.
+VI. CONCLUSION
+In this paper, we proposed TrackNet, a heatmap-
+based deep learning network comprising both con-
+volutional and deconvolutional neural network.
+TrackNet is able to precisely position coordinates
+of high-speed and tiny objects such as tennis and
+badminton. With TrackNet, accurate predictions can
+be achieved on broadcast sports videos without
+high frame rate and high resolution, signiﬁcantly
+reducing the cost from recording and processing
+high speciﬁcation videos. To enhance TrackNet’s
+capability of identifying trajectory patterns of fast-
+moving objects, we designed a scalable input that
+allows feeding TrackNet with multiple consecutive
+input frames. By evaluating both conventional im-
+age processing algorithm and the proposed Track-
+Net on the real tennis video dataset, we demon-
+strated that TrackNet can achieve an explainable
+and exceptional prediction performance by adopting
+consecutive input frames concept on the deep neural
+network. Moreover, for the even faster objects such
+as badminton, TrackNet achieves a decent tracking
+capability according to our experimental results,
+exhibiting promising extensibility to related appli-
+cations.
+ACKNOWLEDGEMENT
+This work of T.-U. ˙Ik was supported in part by the
+Ministry of Science and Technology, Taiwan under
+grant MOST 107-2627-H-009-001 and MOST 105-
+2221-E-009-102-MY3. This work was ﬁnancially
+supported by the Center for Open Intelligent Con-
+nectivity from The Featured Areas Research Center
+11
+
+===== PAGE 12 =====
+Program within the framework of the Higher Edu-
+cation Sprout Project by the Ministry of Education
+(MOE), Taiwan.
+REFERENCES
+[1] M. Archana and M. K. Geetha, “Object detection and tracking
+based on trajectory in broadcast tennis video,” Procedia Com-
+puter Science, vol. 58, pp. 225–232, 2015.
+[2] K. Simonyan and A. Zisserman, “Very deep convolutional
+networks for large-scale image recognition,” arXiv preprint
+arXiv:1409.1556, 2014.
+[3] R. Girshick, J. Donahue, T. Darrell, and J. Malik, “Rich feature
+hierarchies for accurate object detection and semantic segmen-
+tation,” in Proceedings of the IEEE Conference on Computer
+Vision and Pattern Recognition (CVPR 2014), 23-28 June 2014,
+pp. 580–587.
+[4] R. Girshick, “Fast R-CNN,” in International Conference on
+Computer Vision (ICCV 2015), 11-18 December 2015, pp.
+1440–1448.
+[5] S. Ren, K. He, R. Girshick, and J. Sun, “Faster r-cnn: Towards
+real-time object detection with region proposal networks,” in
+Advances in neural information processing systems, 2015, pp.
+91–99.
+[6] J. Redmon, S. Divvala, R. Girshick, and A. Farhadi, “You only
+look once: Uniﬁed, real-time object detection,” in Proceedings
+of the IEEE conference on computer vision and pattern recog-
+nition, 2016, pp. 779–788.
+[7] H. Noh, S. Hong, and B. Han, “Learning deconvolution net-
+work for semantic segmentation,” in Proceedings of the IEEE
+International Conference on Computer Vision, 2015, pp. 1520–
+1528.
+[8] H.-T. Chen, W.-J. Tsai, S.-Y. Lee, and J.-Y. Yu, “Ball tracking
+and 3D trajectory approximation with applications to tactics
+analysis from single-camera volleyball sequences,” Multimedia
+Tools and Applications, vol. 60, no. 3, pp. 641–667, October
+2012.
+[9] X. Wang, V. Ablavsky, H. B. Shitrit, and P. Fua, “Take your
+eyes off the ball: Improving ball-tracking by focusing on team
+play,” Computer Vision and Image Understanding, vol. 119, pp.
+102–115, February 2014.
+[10] T.-S. Fu, H.-T. Chen, C.-L. Chou, W.-J. Tsai, and S.-Y. Lee,
+“Screen-strategy analysis in broadcast basketball video using
+player tracking,” in Processing of the 2011 IEEE Visual Com-
+munications and Image (VCIP), 6-9 November 2011.
+[11] H. Myint, P. Wong, L. Dooley, and A. Hopgood, “Tracking
+a table tennis ball for umpiring purposes,” in Proceedings of
+the 14th IAPR International Conference on Machine Vision
+Applications (MVA 2015), 18-22 May 2015, pp. 170–173.
+[12] “Hawk-eye,” https://en.wikipedia.org/wiki/Hawk-Eye.
+[13] X. Yu, C.-H. Sim, J. R. Wang, and L. F. Cheong, “A trajectory-
+based ball detection and tracking algorithm in broadcast tennis
+video,” in 2004 International Conference on Image Processing
+(ICIP 2004), vol. 2.
+Singapore: IEEE, 24-27 October 2004,
+pp. 1049–1052.
+[14] V. Ren`o, N. Mosca, M. Nitti, C. Guaragnella, T. D’Orazio, and
+E. Stella, “Real-time tracking of a tennis ball by combining 3d
+data and domain knowledge,” in Technology and Innovation in
+Sports, Health and Wellbeing (TISHW), International Confer-
+ence on.
+IEEE, 2016, pp. 1–7.
+[15] F. Yan, W. Christmas, and J. Kittler, “A tennis ball tracking
+algorithm for automatic annotation of tennis match,” in Pro-
+ceedings of the British Machine Vision Conference (BMVC
+2005), vol. 2. Durham, England: BMVA, 5-8 September 2005,
+pp. 619–628.
+[16] X. Zhou, L. Xie, Q. Huang, S. J. Cox, and Y. Zhang, “Tennis
+ball tracking using a two-layered data association approach,”
+IEEE Transactions on Multimedia, vol. 17, no. 2, pp. 145–156,
+2015.
+[17] A. Krizhevsky, I. Sutskever, and G. E. Hinton, “Imagenet classi-
+ﬁcation with deep convolutional neural networks,” in Advances
+in neural information processing systems, 2012, pp. 1097–1105.
+[18] O. Ronneberger, P. Fischer, and T. Brox, “U-net: Convolutional
+networks for biomedical image segmentation,” in International
+Conference on Medical image computing and computer-assisted
+intervention.
+Springer, 2015, pp. 234–241.
+[19] W. Jiang and Z. Yin, “Human activity recognition using
+wearable sensors by deep convolutional neural networks,” in
+Proceedings of the 23rd ACM international conference on
+Multimedia.
+ACM, 2015, pp. 1307–1310.
+[20] Y. Chen and Y. Xue, “A deep learning approach to human ac-
+tivity recognition based on single accelerometer,” in 2015 IEEE
+International Conference on Systems, Man, and Cybernetics
+(SMC).
+IEEE, 2015, pp. 1488–1492.
+[21] V. Badrinarayanan, A. Handa, and R. Cipolla, “Segnet: A deep
+convolutional encoder-decoder architecture for robust semantic
+pixel-wise labelling,” arXiv preprint arXiv:1505.07293, 2015.
+[22] J. Long, E. Shelhamer, and T. Darrell, “Fully convolutional
+networks for semantic segmentation,” in Proceedings of the
+IEEE conference on computer vision and pattern recognition,
+2015, pp. 3431–3440.
+[23] V. Belagiannis and A. Zisserman, “Recurrent human pose
+estimation,” in 2017 12th IEEE International Conference on
+Automatic Face and Gesture Recognition (FG 2017).
+IEEE,
+2017, pp. 468–475.
+[24] T. Pﬁster, J. Charles, and A. Zisserman, “Flowing convnets for
+human pose estimation in videos,” in Proceedings of the IEEE
+International Conference on Computer Vision, 2015, pp. 1913–
+1921.
+[25] “Hough gradient method,” https://goo.gl/gZTQRm.
+[26] M. D. Zeiler, “ADADELTA: an adaptive learning rate method,”
+arXiv preprint, vol. abs/1212.5701, 2012. [Online]. Available:
+http://arxiv.org/abs/1212.5701
+12

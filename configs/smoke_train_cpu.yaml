@@ -1,0 +1,27 @@
+model:
+  version: v2
+  sequence_length: 3
+  base_channels: 4
+
+dataset:
+  processed_root: test_results/synthetic_processed
+  sequence_length: 3
+  target_frame_mode: all
+  heatmap_mode: gaussian
+  sigma: 2.0
+
+train:
+  experiment_name: smoke_cpu
+  output_root: test_results/train
+  epochs: 1
+  batch_size: 2
+  workers: 0
+  val_split: 0.34
+  optimizer: Adam
+  lr: 0.001
+  loss: wbce
+  device: cpu
+  amp: false
+  seed: 7
+  num_threads: 1
+  interop_threads: 1

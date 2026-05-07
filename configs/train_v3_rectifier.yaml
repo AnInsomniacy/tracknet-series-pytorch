@@ -1,0 +1,26 @@
+model:
+  version: v3_rectifier
+  hidden_channels: 64
+
+dataset:
+  type: trajectory
+  processed_root: data/processed/tracknet_512x288
+  trajectory_length: 16
+  frame_stride: 1
+  mask_ratio: 0.3
+  delta_y_pixels: 30.0
+  seed: 26
+
+train:
+  experiment_name: tracknet_v3_rectifier
+  output_root: outputs/train
+  epochs: 30
+  batch_size: 32
+  workers: 4
+  val_split: 0.2
+  optimizer: Adam
+  lr: 0.001
+  loss: trajectory_mse
+  device: auto
+  amp: true
+  seed: 26

@@ -1,0 +1,29 @@
+model:
+  version: v1
+  sequence_length: 3
+  base_channels: 64
+  dropout: 0.0
+
+dataset:
+  processed_root: data/processed/tracknet_640x360
+  sequence_length: 3
+  model_version: v1
+  target_frame_mode: last
+  heatmap_mode: v1_uint8
+  # V1 paper states sigma^2=10 for the amplified Gaussian target.
+  sigma: 3.1622776602
+  frame_stride: 1
+
+train:
+  experiment_name: tracknet_v1
+  output_root: outputs/train
+  epochs: 500
+  batch_size: 2
+  workers: 4
+  val_split: 0.2
+  optimizer: Adadelta
+  lr: 1.0
+  loss: cross_entropy
+  device: auto
+  amp: true
+  seed: 26
