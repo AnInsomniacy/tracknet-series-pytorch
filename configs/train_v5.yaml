@@ -11,11 +11,6 @@ model:
 dataset:
   processed_root: data/processed/tracknet_512x288
   sequence_length: 3
-  model_version: v5
-  target_frame_mode: all
-  heatmap_mode: binary_disk
-  # V5 uses r=30 for TrackNetV2-sized data and r=40 for its internal high-res data.
-  radius: 30.0
   frame_stride: 1
 
 train:

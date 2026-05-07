@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 import cv2
 import numpy as np
@@ -18,11 +18,10 @@ from tracknet.constants import (
     PROCESSED_X_MODEL_COL,
     PROCESSED_Y_MODEL_COL,
 )
-from tracknet.data.heatmaps import HeatmapMode, make_heatmap
+from tracknet.data.heatmaps import make_heatmap
 from tracknet.data.transforms import image_to_tensor_chw_uint8_rgb
+from tracknet.papers.base import HeatmapTargetPolicy
 from tracknet.utils.io import read_json
-
-TargetFrameMode = Literal["all", "last", "center"]
 
 
 @dataclass(frozen=True)
@@ -48,17 +47,8 @@ class WindowRecord:
 class TrackNetDatasetConfig:
     processed_root: Path
     sequence_length: int
-    model_version: str = "v2"
-    target_frame_mode: TargetFrameMode = "all"
-    heatmap_mode: HeatmapMode = "gaussian"
-    sigma: float = 3.0
-    radius: float = 30.0
-    include_background: bool = False
     frame_stride: int = 1
     split_file: Path | None = None
-    video_mixup_alpha: float = 0.0
-    video_mixup_probability: float = 0.0
-    seed: int = 26
 
     @classmethod
     def from_mapping(cls, cfg: dict[str, Any]) -> "TrackNetDatasetConfig":
@@ -66,17 +56,8 @@ class TrackNetDatasetConfig:
         return cls(
             processed_root=Path(cfg["processed_root"]),
             sequence_length=int(cfg.get("sequence_length", 3)),
-            model_version=str(cfg.get("model_version", "v2")),
-            target_frame_mode=str(cfg.get("target_frame_mode", "all")),  # type: ignore[arg-type]
-            heatmap_mode=str(cfg.get("heatmap_mode", "gaussian")),  # type: ignore[arg-type]
-            sigma=float(cfg.get("sigma", 3.0)),
-            radius=float(cfg.get("radius", 30.0)),
-            include_background=bool(cfg.get("include_background", False)),
             frame_stride=max(1, int(cfg.get("frame_stride", 1))),
             split_file=Path(split) if split else None,
-            video_mixup_alpha=float(cfg.get("video_mixup_alpha", 0.0)),
-            video_mixup_probability=float(cfg.get("video_mixup_probability", 0.0)),
-            seed=int(cfg.get("seed", 26)),
         )
 
 
@@ -90,10 +71,11 @@ class ProcessedTrackNetDataset(Dataset[dict[str, Any]]):
     - target_classes: [H,W] for V1 softmax targets when heatmap_mode=v1_uint8
     """
 
-    def __init__(self, cfg: TrackNetDatasetConfig):
+    def __init__(self, cfg: TrackNetDatasetConfig, target_policy: HeatmapTargetPolicy | None = None):
         if cfg.sequence_length <= 0:
             raise ValueError("sequence_length must be positive")
         self.cfg = cfg
+        self.target_policy = target_policy or HeatmapTargetPolicy()
         self.root = cfg.processed_root
         manifest_path = self.root / "manifest.json"
         if not manifest_path.exists():
@@ -166,13 +148,14 @@ class ProcessedTrackNetDataset(Dataset[dict[str, Any]]):
         return self._load_rgb_tensor(seq.background_path)
 
     def _target_indices(self) -> list[int]:
-        if self.cfg.target_frame_mode == "all":
+        mode = self.target_policy.target_frame_mode
+        if mode == "all":
             return list(range(self.cfg.sequence_length))
-        if self.cfg.target_frame_mode == "last":
+        if mode == "last":
             return [self.cfg.sequence_length - 1]
-        if self.cfg.target_frame_mode == "center":
+        if mode == "center":
             return [self.cfg.sequence_length // 2]
-        raise ValueError(f"Unsupported target_frame_mode: {self.cfg.target_frame_mode}")
+        raise ValueError(f"Unsupported target_frame_mode: {mode}")
 
     def __len__(self) -> int:
         return len(self.windows)
@@ -193,17 +176,19 @@ class ProcessedTrackNetDataset(Dataset[dict[str, Any]]):
         return sample
 
     def _should_apply_video_mixup(self, idx: int) -> bool:
-        if self.cfg.video_mixup_alpha <= 0.0 or self.cfg.video_mixup_probability <= 0.0 or len(self.windows) < 2:
+        policy = self.target_policy
+        if policy.video_mixup_alpha <= 0.0 or policy.video_mixup_probability <= 0.0 or len(self.windows) < 2:
             return False
-        rng = np.random.default_rng(self.cfg.seed + idx * 1009)
-        return bool(rng.random() < self.cfg.video_mixup_probability)
+        rng = np.random.default_rng(policy.seed + idx * 1009)
+        return bool(rng.random() < policy.video_mixup_probability)
 
     def _mixup_partner_and_lambda(self, idx: int) -> tuple[int, float]:
-        rng = np.random.default_rng(self.cfg.seed + idx * 1009 + 17)
+        policy = self.target_policy
+        rng = np.random.default_rng(policy.seed + idx * 1009 + 17)
         partner_idx = int(rng.integers(0, len(self.windows) - 1))
         if partner_idx >= idx:
             partner_idx += 1
-        alpha = float(self.cfg.video_mixup_alpha)
+        alpha = float(policy.video_mixup_alpha)
         lam = float(rng.beta(alpha, alpha))
         return partner_idx, lam
 
@@ -218,7 +203,8 @@ class ProcessedTrackNetDataset(Dataset[dict[str, Any]]):
         frames_t = torch.stack(frames, dim=0)  # [T,3,H,W]
         input_parts = [frames_t.reshape(win.length * 3, seq.height, seq.width)]
         background = None
-        if self.cfg.include_background:
+        policy = self.target_policy
+        if policy.include_background:
             background = self._load_background(seq)
             input_parts.append(background)
         model_input = torch.cat(input_parts, dim=0)
@@ -233,9 +219,9 @@ class ProcessedTrackNetDataset(Dataset[dict[str, Any]]):
                 int(row[PROCESSED_VISIBILITY_COL]),
                 float(row[PROCESSED_X_MODEL_COL]),
                 float(row[PROCESSED_Y_MODEL_COL]),
-                mode=self.cfg.heatmap_mode,
-                sigma=self.cfg.sigma,
-                radius=self.cfg.radius,
+                mode=policy.heatmap_mode,  # type: ignore[arg-type]
+                sigma=policy.sigma,
+                radius=policy.radius,
             )
             targets.append(h)
             target_info.append(
@@ -247,7 +233,7 @@ class ProcessedTrackNetDataset(Dataset[dict[str, Any]]):
                     "local_index": local_idx,
                 }
             )
-        if self.cfg.heatmap_mode == "v1_uint8":
+        if policy.heatmap_mode == "v1_uint8":
             target_tensor = torch.from_numpy(np.stack(targets, axis=0).astype(np.int64))
             if target_tensor.shape[0] == 1:
                 target_tensor = target_tensor[0]

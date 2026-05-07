@@ -7,12 +7,6 @@ model:
 dataset:
   processed_root: data/processed/tracknet_512x288
   sequence_length: 8
-  model_version: v3
-  target_frame_mode: all
-  heatmap_mode: binary_disk
-  # Radius should be set to the empirical shuttle/ball radius for the dataset.
-  radius: 3.0
-  include_background: true
   frame_stride: 1
 
 train:

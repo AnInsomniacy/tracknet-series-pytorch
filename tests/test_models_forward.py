@@ -55,7 +55,7 @@ class _PassDraft(nn.Module):
 
 class _ZeroResidual(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return torch.zeros_like(x)
+        return torch.zeros(x.shape[0], 3, x.shape[-2], x.shape[-1], device=x.device, dtype=x.dtype)
 
 
 class _ZeroMDD(nn.Module):

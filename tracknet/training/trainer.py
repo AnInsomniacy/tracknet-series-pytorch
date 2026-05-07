@@ -14,10 +14,8 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, DistributedSampler, Subset
 from tqdm import tqdm
 
-from tracknet.data.dataset import ProcessedTrackNetDataset, TrackNetDatasetConfig
-from tracknet.data.trajectory_dataset import TrajectoryRectifierDataset, TrajectoryRectifierDatasetConfig
-from tracknet.models import build_model
-from tracknet.papers import dataset_config_with_paper_defaults, get_paper_spec
+from tracknet.papers import get_paper_spec, paper_id_from_model_config
+from tracknet.papers.base import PaperSpec
 from tracknet.training.checkpoint import CheckpointState, load_checkpoint, load_model_weights, save_checkpoint, save_model_only
 from tracknet.training.losses import build_loss
 from tracknet.utils.device import select_device
@@ -90,6 +88,11 @@ class TrackNetTrainer:
         self.amp_enabled = self.amp_requested and self.device.type == "cuda"
         self.scaler = torch.amp.GradScaler("cuda", enabled=self.amp_enabled)
         self.split_metadata: dict[str, Any] = {}
+        self.paper_spec = self._resolve_paper_spec()
+
+    def _resolve_paper_spec(self) -> PaperSpec:
+        model_cfg = self.cfg.get("model", {})
+        return get_paper_spec(paper_id_from_model_config(model_cfg))
 
     def _resolve_output_dir(self) -> Path:
         resume = self.train_cfg.get("resume")
@@ -180,12 +183,7 @@ class TrackNetTrainer:
 
     def _make_dataset(self) -> tuple[Any, Any]:
         dataset_section = self.cfg["dataset"]
-        dataset_type = str(dataset_section.get("type", "heatmap")).lower()
-        if dataset_type in {"trajectory", "rectifier", "v3_rectifier"}:
-            dataset = TrajectoryRectifierDataset(TrajectoryRectifierDatasetConfig.from_mapping(dataset_section))
-        else:
-            ds_cfg = TrackNetDatasetConfig.from_mapping(dataset_config_with_paper_defaults(dataset_section, self.cfg.get("model")))
-            dataset = ProcessedTrackNetDataset(ds_cfg)
+        dataset = self.paper_spec.build_training_dataset(dataset_section)
         val_split = float(self.train_cfg.get("val_split", 0.2))
         if not 0.0 < val_split < 1.0:
             raise ValueError("train.val_split must be between 0 and 1")
@@ -193,7 +191,7 @@ class TrackNetTrainer:
         train_size = len(dataset) - val_size
         if train_size <= 0:
             raise ValueError("Dataset is too small for the requested validation split")
-        if dataset_type in {"trajectory", "rectifier", "v3_rectifier"}:
+        if self.paper_spec.paper_id.endswith("rectifier"):
             train_indices, val_indices = self._split_indices_by_trajectory_sequence(dataset, val_split)
         else:
             train_indices, val_indices = self._split_indices_by_sequence(dataset, val_split)
@@ -305,11 +303,10 @@ class TrackNetTrainer:
         train_ds, val_ds = self._make_dataset()
         train_loader = self._make_loader(train_ds, train=True)
         val_loader = self._make_loader(val_ds, train=False)
-        model = build_model(self.cfg["model"]).to(self.device)
+        model = self.paper_spec.build_model(self.cfg["model"]).to(self.device)
         if self.distributed:
             model = DDP(model, device_ids=[self.local_rank] if self.device.type == "cuda" else None)
-        model_version = str(self.cfg["model"].get("version", self.cfg["model"].get("model_version", "v2")))
-        default_loss = get_paper_spec(model_version).loss_name
+        default_loss = self.paper_spec.loss_name
         criterion = build_loss(str(self.train_cfg.get("loss", default_loss))).to(self.device)
         optimizer = self._make_optimizer(model)
         scheduler = self._make_scheduler(optimizer)

@@ -69,15 +69,10 @@ def decode_heatmap(
     return Prediction(visibility=1, x=float(coord[0]), y=float(coord[1]), score=score)
 
 
-def default_postprocess_for_model(model_version: str) -> PostprocessKind:
-    return "v1_hough" if model_version.lower() == "v1" else "largest_blob"
-
-
 def decode_model_output(
     output: torch.Tensor,
     *,
-    model_version: str | None = None,
-    postprocess_kind: PostprocessKind | None = None,
+    postprocess_kind: PostprocessKind,
     threshold: float = 0.5,
     hough_threshold: int = 128,
 ) -> list[Prediction]:
@@ -90,7 +85,7 @@ def decode_model_output(
     """
     if output.ndim == 4 and output.shape[0] == 1:
         output = output[0]
-    kind = postprocess_kind or default_postprocess_for_model(model_version or "v2")
+    kind = postprocess_kind
     if kind == "v1_hough":
         if output.ndim != 3 or output.shape[0] != 256:
             raise ValueError(f"V1 output must be [256,H,W], got {tuple(output.shape)}")

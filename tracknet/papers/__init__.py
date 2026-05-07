@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from tracknet.papers.base import PaperSpec
 from tracknet.papers.v1.spec import build_spec as build_v1_spec
 from tracknet.papers.v2.spec import build_spec as build_v2_spec
@@ -46,6 +44,13 @@ def normalize_paper_id(name: str) -> str:
     return aliases.get(key, key)
 
 
+DEFAULT_PAPER_ID = "v2"
+
+
+def paper_id_from_model_config(model_cfg: dict) -> str:
+    return str(model_cfg.get("version", model_cfg.get("model_version", DEFAULT_PAPER_ID)))
+
+
 def get_paper_spec(name: str) -> PaperSpec:
     key = normalize_paper_id(name)
     specs = _specs()
@@ -55,17 +60,14 @@ def get_paper_spec(name: str) -> PaperSpec:
 
 
 def dataset_config_with_paper_defaults(dataset_cfg: dict[str, Any], model_cfg: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Merge paper defaults with user dataset config.
+    """Return sampling defaults for compatibility with older callers.
 
-    User config wins. The model version is inferred from the model section first
-    and then from the dataset section. This keeps existing YAML files working
-    while moving version semantics into PaperSpec.
+    Paper-specific target generation now lives in `PaperSpec.target_policy`.
+    This helper intentionally returns only neutral sampling configuration.
     """
 
     version = "v2"
     if model_cfg:
         version = str(model_cfg.get("version", model_cfg.get("model_version", version)))
-    version = str(dataset_cfg.get("model_version", dataset_cfg.get("version", version)))
-    defaults = dict(get_paper_spec(version).dataset_defaults)
-    defaults.update(dataset_cfg)
-    return defaults
+    spec = get_paper_spec(version)
+    return spec.resolved_dataset_config(dataset_cfg)

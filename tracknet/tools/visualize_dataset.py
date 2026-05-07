@@ -9,7 +9,7 @@ import cv2
 import numpy as np
 
 from tracknet.config import load_yaml
-from tracknet.data.dataset import ProcessedTrackNetDataset, TrackNetDatasetConfig
+from tracknet.papers import DEFAULT_PAPER_ID, get_paper_spec, paper_id_from_model_config
 from tracknet.utils.io import ensure_dir
 
 
@@ -25,7 +25,8 @@ def main() -> None:
     section = cfg.get("visualize_dataset")
     if not isinstance(section, dict):
         raise KeyError("Missing config section: visualize_dataset")
-    ds = ProcessedTrackNetDataset(TrackNetDatasetConfig.from_mapping(section["dataset"]))
+    model_cfg = section.get("model") or cfg.get("model") or {"version": DEFAULT_PAPER_ID}
+    ds = get_paper_spec(paper_id_from_model_config(model_cfg)).build_heatmap_dataset(section["dataset"])
     out_dir = ensure_dir(Path(section.get("output_dir", "outputs/visualize_dataset")))
     max_samples = min(int(section.get("max_samples", 8)), len(ds))
     for i in range(max_samples):

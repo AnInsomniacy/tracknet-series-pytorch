@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections import deque
+from collections import defaultdict, deque
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -14,12 +14,11 @@ import torch
 
 from tracknet.constants import CSV_OUTPUT_COLUMNS, RAW_FRAME_COL, RAW_VISIBILITY_COL, RAW_X_COL, RAW_Y_COL
 from tracknet.data.transforms import LetterboxTransform, image_to_tensor_chw_uint8_rgb, letterbox_image
-from tracknet.inference.aggregation import aggregate_window_outputs, weighted_average_heatmaps
-from tracknet.inference.postprocess import PostprocessKind, Prediction
+from tracknet.inference.aggregation import FramePrediction, weighted_average_heatmaps
+from tracknet.inference.postprocess import Prediction
 from tracknet.inference.rectification import RectificationConfig, rectify_predictions
 from tracknet.inference.visualization import draw_prediction, update_trail
-from tracknet.models import build_model
-from tracknet.papers import get_paper_spec
+from tracknet.papers import get_paper_spec, paper_id_from_model_config
 from tracknet.training.checkpoint import load_checkpoint, load_model_weights
 from tracknet.utils.device import select_device
 from tracknet.utils.io import ensure_dir
@@ -35,8 +34,6 @@ class VideoPredictionConfig:
     target_width: int = 512
     target_height: int = 288
     sequence_length: int = 3
-    target_frame_mode: str = "all"
-    include_background: bool = False
     threshold: float = 0.5
     hough_threshold: int = 128
     batch_size: int = 4
@@ -47,26 +44,51 @@ class VideoPredictionConfig:
     rectifier_model: dict[str, Any] | None = None
     rectifier_sequence_length: int = 16
     rectifier_delta_y_pixels: float = 30.0
+    background_sample_stride: int = 8
+    max_background_samples: int = 512
     num_threads: int | None = None
     interop_threads: int | None = None
 
 
-def _read_video_frames(video_path: Path) -> tuple[list[np.ndarray], float, int, int]:
+def _open_video(video_path: Path) -> cv2.VideoCapture:
     cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
         raise FileNotFoundError(f"Could not open video: {video_path}")
+    return cap
+
+
+def _video_metadata(video_path: Path) -> tuple[int, float, int, int]:
+    cap = _open_video(video_path)
+    frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
     fps = float(cap.get(cv2.CAP_PROP_FPS) or 30.0)
-    frames: list[np.ndarray] = []
+    raw_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
+    raw_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
+    if frame_count <= 0 or raw_w <= 0 or raw_h <= 0:
+        frame_count = 0
+        raw_w = raw_h = 0
+        while True:
+            ok, frame = cap.read()
+            if not ok:
+                break
+            frame_count += 1
+            if raw_w == 0 or raw_h == 0:
+                raw_h, raw_w = frame.shape[:2]
+    cap.release()
+    if frame_count <= 0 or raw_w <= 0 or raw_h <= 0:
+        raise ValueError(f"Video contains no readable frames: {video_path}")
+    return frame_count, fps, raw_w, raw_h
+
+
+def _iter_video_frames(video_path: Path):
+    cap = _open_video(video_path)
+    index = 0
     while True:
         ok, frame = cap.read()
         if not ok:
             break
-        frames.append(frame)
+        yield index, frame
+        index += 1
     cap.release()
-    if not frames:
-        raise ValueError(f"Video contains no readable frames: {video_path}")
-    h, w = frames[0].shape[:2]
-    return frames, fps, w, h
 
 
 def _estimate_background(model_frames_rgb: list[np.ndarray]) -> np.ndarray:
@@ -75,6 +97,24 @@ def _estimate_background(model_frames_rgb: list[np.ndarray]) -> np.ndarray:
     # self-contained estimate when only one input video is provided.
     stack = np.stack(model_frames_rgb, axis=0)
     return np.median(stack, axis=0).astype(np.uint8)
+
+
+def _sample_background(video_path: Path, cfg: VideoPredictionConfig) -> tuple[np.ndarray, LetterboxTransform]:
+    samples: list[np.ndarray] = []
+    transform: LetterboxTransform | None = None
+    stride = max(1, int(cfg.background_sample_stride))
+    max_samples = max(1, int(cfg.max_background_samples))
+    for frame_index, frame in _iter_video_frames(video_path):
+        if frame_index % stride != 0:
+            continue
+        rgb, t = letterbox_image(frame, cfg.target_width, cfg.target_height)
+        transform = t if transform is None else transform
+        samples.append(rgb)
+        if len(samples) >= max_samples:
+            break
+    if transform is None or not samples:
+        raise ValueError(f"Could not sample frames for background estimation: {video_path}")
+    return _estimate_background(samples), transform
 
 
 def _model_config_from_checkpoint(checkpoint_path: Path, explicit_model: dict[str, Any] | None) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -87,17 +127,10 @@ def _model_config_from_checkpoint(checkpoint_path: Path, explicit_model: dict[st
     return dict(cfg["model"]), ckpt
 
 
-def _window_indices_for_frame(frame_index: int, n_frames: int, sequence_length: int) -> list[int]:
-    # V1 predicts the last frame. Prefix padding preserves early frames instead
-    # of silently dropping them.
-    start = frame_index - sequence_length + 1
-    return [min(max(i, 0), n_frames - 1) for i in range(start, frame_index + 1)]
-
-
 def _sliding_window_indices(n_frames: int, sequence_length: int) -> list[list[int]]:
-    if n_frames < sequence_length:
-        return [_window_indices_for_frame(i, n_frames, sequence_length) for i in range(n_frames)]
-    return [list(range(start, start + sequence_length)) for start in range(0, n_frames - sequence_length + 1)]
+    from tracknet.inference.windowing import sliding_windows
+
+    return sliding_windows(n_frames, sequence_length)
 
 
 def _build_input_tensor(
@@ -114,45 +147,150 @@ def _build_input_tensor(
     return torch.cat(parts, dim=0)
 
 
-def _weighted_average_heatmaps(items: list[tuple[np.ndarray, float]]) -> np.ndarray:
-    return weighted_average_heatmaps(items)
+class StreamingWindowAggregator:
+    """Incrementally reduce window outputs to frame-level predictions.
+
+    Evaluation can aggregate a whole sequence at once, but video inference must
+    not keep every frame or every window output resident. This reducer preserves
+    the same center-weighted heatmap policy while finalizing frames once no
+    later sliding window can still contribute to them.
+    """
+
+    def __init__(
+        self,
+        *,
+        paper_spec: Any,
+        sequence_length: int,
+        threshold: float,
+        hough_threshold: int,
+    ):
+        self.paper_spec = paper_spec
+        self.sequence_length = int(sequence_length)
+        self.threshold = float(threshold)
+        self.hough_threshold = int(hough_threshold)
+        self._pending_heatmaps: dict[int, list[tuple[np.ndarray, float]]] = defaultdict(list)
+        self._last_predictions: dict[int, Prediction] = {}
+        self._finalized: dict[int, Prediction] = {}
+
+    def add_batch(self, outputs: torch.Tensor, windows: list[list[int]]) -> None:
+        mode = self.paper_spec.target_policy.target_frame_mode if self.paper_spec.target_policy is not None else "all"
+        if mode == "last" or self.paper_spec.postprocess_kind == "v1_hough":
+            for item in self.paper_spec.aggregate_window_outputs(
+                outputs,
+                windows,
+                sequence_length=self.sequence_length,
+                threshold=self.threshold,
+                hough_threshold=self.hough_threshold,
+            ):
+                self._last_predictions[int(item.frame)] = item.prediction
+            return
+
+        center = (self.sequence_length - 1) / 2.0
+        sigma = max(1.0, self.sequence_length / 4.0)
+        for sample, window in zip(outputs, windows):
+            if sample.ndim == 2:
+                sample = sample.unsqueeze(0)
+            for local_idx, frame_id in enumerate(window):
+                if local_idx >= sample.shape[0]:
+                    continue
+                weight = float(np.exp(-((local_idx - center) ** 2) / (2.0 * sigma * sigma)))
+                self._pending_heatmaps[int(frame_id)].append((sample[local_idx].detach().cpu().numpy().astype(np.float32), weight))
+
+    def finalize_until(self, frame_exclusive: int) -> list[FramePrediction]:
+        ready: list[FramePrediction] = []
+        for frame_id in sorted([frame for frame in self._pending_heatmaps if frame < frame_exclusive]):
+            ready.append(self._finalize_heatmap_frame(frame_id))
+        for frame_id in sorted([frame for frame in self._last_predictions if frame < frame_exclusive]):
+            ready.append(FramePrediction(frame_id, self._last_predictions.pop(frame_id)))
+        return sorted(ready, key=lambda item: item.frame)
+
+    def finalize_all(self) -> list[FramePrediction]:
+        ready: list[FramePrediction] = []
+        for frame_id in sorted(list(self._pending_heatmaps)):
+            ready.append(self._finalize_heatmap_frame(frame_id))
+        for frame_id in sorted(list(self._last_predictions)):
+            ready.append(FramePrediction(frame_id, self._last_predictions.pop(frame_id)))
+        return sorted(ready, key=lambda item: item.frame)
+
+    def _finalize_heatmap_frame(self, frame_id: int) -> FramePrediction:
+        from tracknet.inference.postprocess import decode_model_output
+
+        merged = weighted_average_heatmaps(self._pending_heatmaps.pop(frame_id))
+        prediction = decode_model_output(
+            torch.from_numpy(merged),
+            postprocess_kind=self.paper_spec.postprocess_kind,
+            threshold=self.threshold,
+            hough_threshold=self.hough_threshold,
+        )[0]
+        self._finalized[frame_id] = prediction
+        return FramePrediction(frame_id, prediction)
 
 
-def _aggregate_outputs(
+def _predict_streaming(
     model: torch.nn.Module,
-    windows: list[list[int]],
     *,
-    frames_rgb_model: list[np.ndarray],
+    video_path: Path,
+    frame_count: int,
     background_rgb_model: np.ndarray | None,
     cfg: VideoPredictionConfig,
-    postprocess_kind: PostprocessKind,
+    paper_spec: Any,
     device: torch.device,
 ) -> list[Prediction]:
-    n_frames = max(max(w) for w in windows) + 1
-    all_outputs: list[torch.Tensor] = []
-    batched_windows: list[list[int]] = []
-    for start in range(0, len(windows), cfg.batch_size):
-        batch_windows = windows[start : start + cfg.batch_size]
-        batch_inputs = [_build_input_tensor(frames_rgb_model, w, background_rgb_model=background_rgb_model) for w in batch_windows]
-        batch = torch.stack(batch_inputs, dim=0).to(device)
-        with torch.no_grad():
-            out = model(batch).detach().cpu()
-        all_outputs.append(out)
-        batched_windows.extend(batch_windows[: len(out)])
-    aggregated = aggregate_window_outputs(
-        torch.cat(all_outputs, dim=0),
-        batched_windows,
-        postprocess_kind=postprocess_kind,
+    windows = paper_spec.video_windows(frame_count, cfg.sequence_length)
+    if not windows:
+        return []
+
+    max_buffer = int(cfg.sequence_length)
+    frame_buffer: deque[tuple[int, np.ndarray]] = deque()
+    batch_windows: list[list[int]] = []
+    batch_inputs: list[torch.Tensor] = []
+    aggregator = StreamingWindowAggregator(
+        paper_spec=paper_spec,
         sequence_length=cfg.sequence_length,
-        target_frame_mode=cfg.target_frame_mode,
         threshold=cfg.threshold,
         hough_threshold=cfg.hough_threshold,
     )
-    by_frame = {item.frame: item.prediction for item in aggregated}
-    preds: list[Prediction] = []
-    for i in range(n_frames):
-        preds.append(by_frame.get(i, Prediction(visibility=0, x=-1.0, y=-1.0, score=0.0)))
-    return preds
+    predictions_by_frame: dict[int, Prediction] = {}
+    window_cursor = 0
+
+    def buffered_frame(frame_id: int) -> np.ndarray:
+        for buffered_id, buffered_rgb in frame_buffer:
+            if buffered_id == frame_id:
+                return buffered_rgb
+        raise RuntimeError(f"Window requested frame {frame_id}, but it is no longer buffered")
+
+    def flush_batch() -> None:
+        if not batch_inputs:
+            return
+        batch = torch.stack(batch_inputs, dim=0).to(device)
+        with torch.no_grad():
+            out = model(batch).detach().cpu()
+        aggregator.add_batch(out, batch_windows[: len(out)])
+        if batch_windows:
+            next_start = batch_windows[-1][0] + 1
+            for item in aggregator.finalize_until(next_start):
+                predictions_by_frame[int(item.frame)] = item.prediction
+        batch_windows.clear()
+        batch_inputs.clear()
+
+    for frame_index, frame in _iter_video_frames(video_path):
+        rgb, _ = letterbox_image(frame, cfg.target_width, cfg.target_height)
+        frame_buffer.append((frame_index, rgb))
+        while window_cursor < len(windows) and max(windows[window_cursor]) <= frame_index:
+            window = windows[window_cursor]
+            batch_windows.append(window)
+            batch_inputs.append(_build_input_tensor([buffered_frame(i) for i in window], list(range(len(window))), background_rgb_model=background_rgb_model))
+            window_cursor += 1
+            if len(batch_inputs) >= int(cfg.batch_size):
+                flush_batch()
+        while len(frame_buffer) > max_buffer:
+            frame_buffer.popleft()
+    if window_cursor != len(windows):
+        raise RuntimeError(f"Video ended before all windows were processed: {window_cursor}/{len(windows)}")
+    flush_batch()
+    for item in aggregator.finalize_all():
+        predictions_by_frame[int(item.frame)] = item.prediction
+    return [predictions_by_frame.get(i, Prediction(visibility=0, x=-1.0, y=-1.0, score=0.0)) for i in range(frame_count)]
 
 
 def _map_predictions_to_raw(predictions: list[Prediction], transform: LetterboxTransform) -> list[Prediction]:
@@ -176,41 +314,38 @@ def run_video_prediction(cfg: VideoPredictionConfig) -> pd.DataFrame:
             torch.set_num_interop_threads(int(cfg.interop_threads))
         except RuntimeError:
             pass
-    frames_bgr, fps, raw_w, raw_h = _read_video_frames(Path(cfg.video_path))
-    frames_rgb_model: list[np.ndarray] = []
-    transform: LetterboxTransform | None = None
-    for frame in frames_bgr:
-        rgb, t = letterbox_image(frame, cfg.target_width, cfg.target_height)
-        frames_rgb_model.append(rgb)
-        if transform is None:
-            transform = t
-    assert transform is not None
-    if raw_w != transform.original_width or raw_h != transform.original_height:
-        raise RuntimeError("Video frame size changed during decoding; variable-resolution videos are not supported")
-
     model_cfg, ckpt = _model_config_from_checkpoint(Path(cfg.checkpoint_path), cfg.model)
-    model_version = str(model_cfg.get("version", model_cfg.get("model_version", "v2"))).lower()
-    paper_spec = get_paper_spec(model_version)
-    model = build_model(model_cfg)
+    paper_spec = get_paper_spec(paper_id_from_model_config(model_cfg))
+    frame_count, fps, raw_w, raw_h = _video_metadata(Path(cfg.video_path))
+    transform = LetterboxTransform(
+        original_width=raw_w,
+        original_height=raw_h,
+        target_width=cfg.target_width,
+        target_height=cfg.target_height,
+        scale=min(cfg.target_width / raw_w, cfg.target_height / raw_h),
+        pad_x=(cfg.target_width - int(round(raw_w * min(cfg.target_width / raw_w, cfg.target_height / raw_h)))) // 2,
+        pad_y=(cfg.target_height - int(round(raw_h * min(cfg.target_width / raw_w, cfg.target_height / raw_h)))) // 2,
+        resized_width=int(round(raw_w * min(cfg.target_width / raw_w, cfg.target_height / raw_h))),
+        resized_height=int(round(raw_h * min(cfg.target_width / raw_w, cfg.target_height / raw_h))),
+    )
+    model = paper_spec.build_model(model_cfg)
     load_model_weights(model, ckpt, strict=True)
     device = select_device(cfg.device)
     model.to(device).eval()
 
-    background = _estimate_background(frames_rgb_model) if cfg.include_background else None
-    if paper_spec.postprocess_kind == "v1_hough" or cfg.target_frame_mode == "last":
-        windows = [_window_indices_for_frame(i, len(frames_rgb_model), cfg.sequence_length) for i in range(len(frames_rgb_model))]
-    else:
-        windows = _sliding_window_indices(len(frames_rgb_model), cfg.sequence_length)
-    model_preds = _aggregate_outputs(
+    background = None
+    if paper_spec.target_policy is not None and paper_spec.target_policy.include_background:
+        background, transform = _sample_background(Path(cfg.video_path), cfg)
+    model_preds = _predict_streaming(
         model,
-        windows,
-        frames_rgb_model=frames_rgb_model,
+        video_path=Path(cfg.video_path),
+        frame_count=frame_count,
         background_rgb_model=background,
         cfg=cfg,
-        postprocess_kind=paper_spec.postprocess_kind,
+        paper_spec=paper_spec,
         device=device,
     )
-    raw_preds = _map_predictions_to_raw(model_preds[: len(frames_bgr)], transform)
+    raw_preds = _map_predictions_to_raw(model_preds[:frame_count], transform)
     if cfg.rectifier_checkpoint_path is not None:
         raw_preds = rectify_predictions(
             raw_preds,
@@ -246,7 +381,7 @@ def run_video_prediction(cfg: VideoPredictionConfig) -> pd.DataFrame:
         if not writer.isOpened():
             raise RuntimeError(f"Could not open output video writer: {cfg.output_video}")
         trail: deque[tuple[int, int]] = deque()
-        for i, frame in enumerate(frames_bgr):
+        for i, frame in _iter_video_frames(Path(cfg.video_path)):
             update_trail(trail, raw_preds[i], cfg.trail_length)
             writer.write(draw_prediction(frame, raw_preds[i], frame_index=i + cfg.frame_index_base, trail=trail))
         writer.release()

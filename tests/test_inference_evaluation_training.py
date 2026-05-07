@@ -76,7 +76,7 @@ def test_evaluation_runs_on_synthetic_processed(tmp_path: Path, synthetic_proces
         EvaluationConfig(
             checkpoint_path=ckpt_path,
             output_dir=tmp_path / "eval",
-            dataset={"processed_root": str(synthetic_processed_root), "sequence_length": 3, "target_frame_mode": "all", "heatmap_mode": "gaussian"},
+            dataset={"processed_root": str(synthetic_processed_root), "sequence_length": 3},
             model=model_cfg["model"],
             batch_size=2,
             workers=0,
@@ -92,7 +92,7 @@ def test_evaluation_runs_on_synthetic_processed(tmp_path: Path, synthetic_proces
 def test_train_smoke_saves_checkpoint(tmp_path: Path, synthetic_processed_root: Path) -> None:
     cfg = {
         "model": {"version": "v2", "sequence_length": 3, "base_channels": 4},
-        "dataset": {"processed_root": str(synthetic_processed_root), "sequence_length": 3, "target_frame_mode": "all", "heatmap_mode": "gaussian", "sigma": 2.0},
+        "dataset": {"processed_root": str(synthetic_processed_root), "sequence_length": 3},
         "train": {
             "experiment_name": "smoke",
             "output_root": str(tmp_path / "outputs"),
@@ -116,7 +116,7 @@ def test_train_smoke_saves_checkpoint(tmp_path: Path, synthetic_processed_root: 
 def test_train_split_is_sequence_safe(tmp_path: Path, synthetic_processed_two_sequences_root: Path) -> None:
     cfg = {
         "model": {"version": "v2", "sequence_length": 3, "base_channels": 4},
-        "dataset": {"processed_root": str(synthetic_processed_two_sequences_root), "sequence_length": 3, "target_frame_mode": "all", "heatmap_mode": "gaussian", "sigma": 2.0},
+        "dataset": {"processed_root": str(synthetic_processed_two_sequences_root), "sequence_length": 3},
         "train": {
             "experiment_name": "split_safe",
             "output_root": str(tmp_path / "outputs"),
@@ -143,7 +143,7 @@ def test_train_split_is_sequence_safe(tmp_path: Path, synthetic_processed_two_se
 def test_train_amp_setting_is_recorded_in_checkpoint(tmp_path: Path, synthetic_processed_root: Path) -> None:
     cfg = {
         "model": {"version": "v2", "sequence_length": 3, "base_channels": 4},
-        "dataset": {"processed_root": str(synthetic_processed_root), "sequence_length": 3, "target_frame_mode": "all", "heatmap_mode": "gaussian", "sigma": 2.0},
+        "dataset": {"processed_root": str(synthetic_processed_root), "sequence_length": 3},
         "train": {
             "experiment_name": "amp_smoke",
             "output_root": str(tmp_path / "outputs"),
@@ -185,7 +185,7 @@ def test_evaluation_counts_each_frame_once(tmp_path: Path, synthetic_processed_r
         EvaluationConfig(
             checkpoint_path=ckpt_path,
             output_dir=tmp_path / "eval_once",
-            dataset={"processed_root": str(synthetic_processed_root), "sequence_length": 3, "target_frame_mode": "all", "heatmap_mode": "gaussian"},
+            dataset={"processed_root": str(synthetic_processed_root), "sequence_length": 3},
             model=model_cfg["model"],
             batch_size=2,
             workers=0,

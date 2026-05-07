@@ -30,8 +30,6 @@ def main() -> None:
         target_width=int(section.get("target_width", 512)),
         target_height=int(section.get("target_height", 288)),
         sequence_length=int(section.get("sequence_length", 3)),
-        target_frame_mode=str(section.get("target_frame_mode", "all")),
-        include_background=bool(section.get("include_background", False)),
         threshold=float(section.get("threshold", 0.5)),
         hough_threshold=int(section.get("hough_threshold", 128)),
         batch_size=int(section.get("batch_size", 4)),
@@ -42,6 +40,8 @@ def main() -> None:
         rectifier_model=section.get("rectifier_model"),
         rectifier_sequence_length=int(section.get("rectifier_sequence_length", 16)),
         rectifier_delta_y_pixels=float(section.get("rectifier_delta_y_pixels", 30.0)),
+        background_sample_stride=int(section.get("background_sample_stride", 8)),
+        max_background_samples=int(section.get("max_background_samples", 512)),
         num_threads=int(section["num_threads"]) if section.get("num_threads") is not None else None,
         interop_threads=int(section["interop_threads"]) if section.get("interop_threads") is not None else None,
     )

@@ -63,14 +63,56 @@ class FactorizedSpatioTemporalBlock(nn.Module):
         return spatial_out
 
 
+class DraftMDDFusion(nn.Module):
+    """Long-range skip fusion between coarse drafts and MDD motion maps."""
+
+    def __init__(self, sequence_length: int = 3, motion_channels: int = 4):
+        super().__init__()
+        self.sequence_length = sequence_length
+        self.motion_channels = motion_channels
+
+    def forward(self, draft: torch.Tensor, motion_maps: torch.Tensor) -> torch.Tensor:
+        if draft.ndim != 4 or motion_maps.ndim != 4:
+            raise ValueError("DraftMDDFusion expects draft and motion maps as [B,C,H,W]")
+        if draft.shape[1] != self.sequence_length:
+            raise ValueError(f"Expected draft channels={self.sequence_length}, got {draft.shape[1]}")
+        if motion_maps.shape[1] != self.motion_channels:
+            raise ValueError(f"Expected motion channels={self.motion_channels}, got {motion_maps.shape[1]}")
+        if motion_maps.shape[-2:] != draft.shape[-2:]:
+            motion_maps = F.interpolate(motion_maps, size=draft.shape[-2:], mode="bilinear", align_corners=False)
+        return torch.cat([draft, motion_maps], dim=1)
+
+
+class MotionAwareDraftProjector(nn.Module):
+    """Project DraftMDD context back to heatmap logits.
+
+    The V5 residual equation is defined over the three heatmap drafts. MDD
+    motion maps still participate in that base through this projection and are
+    also visible to the residual head through the long-range skip tensor.
+    """
+
+    def __init__(self, sequence_length: int = 3, motion_channels: int = 4):
+        super().__init__()
+        self.sequence_length = sequence_length
+        self.motion_channels = motion_channels
+        self.projection = nn.Conv2d(sequence_length + motion_channels, sequence_length, kernel_size=1)
+
+    def forward(self, draft_mdd: torch.Tensor) -> torch.Tensor:
+        expected_channels = self.sequence_length + self.motion_channels
+        if draft_mdd.ndim != 4 or draft_mdd.shape[1] != expected_channels:
+            raise ValueError(f"Expected DraftMDD [B,{expected_channels},H,W], got {tuple(draft_mdd.shape)}")
+        return self.projection(draft_mdd)
+
+
 class TSATTHead(nn.Module):
     """Lightweight factorized spatio-temporal Transformer residual head."""
 
-    def __init__(self, sequence_length: int = 3, patch_size: int = 16, embed_dim: int = 64, num_heads: int = 4, num_layers: int = 1, dropout: float = 0.0):
+    def __init__(self, input_channels: int = 3, output_channels: int = 3, patch_size: int = 16, embed_dim: int = 64, num_heads: int = 4, num_layers: int = 1, dropout: float = 0.0):
         super().__init__()
         if patch_size <= 0:
             raise ValueError("patch_size must be positive")
-        self.sequence_length = sequence_length
+        self.input_channels = input_channels
+        self.output_channels = output_channels
         self.patch_size = patch_size
         self.embed_dim = embed_dim
         patch_area = patch_size * patch_size
@@ -90,10 +132,10 @@ class TSATTHead(nn.Module):
 
     def forward(self, draft: torch.Tensor) -> torch.Tensor:
         if draft.ndim != 4:
-            raise ValueError(f"TSATTHead expects [B,T,H,W], got {tuple(draft.shape)}")
+            raise ValueError(f"TSATTHead expects [B,C,H,W], got {tuple(draft.shape)}")
         b, t, h0, w0 = draft.shape
-        if t != self.sequence_length:
-            raise ValueError(f"Expected T={self.sequence_length}, got {t}")
+        if t != self.input_channels:
+            raise ValueError(f"Expected C={self.input_channels}, got {t}")
         x, (pad_h, pad_w) = self._pad_to_patch(draft)
         _, _, h, w = x.shape
         p = self.patch_size
@@ -114,7 +156,7 @@ class TSATTHead(nn.Module):
         residual = self.pixel_shuffle(residual_tiles).reshape(b, t, h, w)
         if pad_h or pad_w:
             residual = residual[:, :, :h0, :w0]
-        return residual
+        return residual[:, : self.output_channels]
 
 
 class TrackNetV5(nn.Module):
@@ -140,9 +182,11 @@ class TrackNetV5(nn.Module):
         self.mdd = MotionDirectionDecoupling()
         backbone_in = 13 if ablation in {"mdd", "full"} else 9
         self.backbone = V2EncoderDecoder(input_channels=backbone_in, output_channels=sequence_length, dropout=dropout, base_channels=base_channels)
-        self.motion_gate = nn.Conv2d(sequence_length + 4, sequence_length, kernel_size=1)
+        self.draft_mdd = DraftMDDFusion(sequence_length=sequence_length, motion_channels=4)
+        self.motion_gate = MotionAwareDraftProjector(sequence_length=sequence_length, motion_channels=4)
         self.context_dropout = nn.Dropout2d(stochastic_context_dropout)
-        self.rstr = TSATTHead(sequence_length, patch_size=rstr_patch_size, embed_dim=rstr_embed_dim, num_heads=rstr_heads, num_layers=rstr_layers)
+        rstr_channels = sequence_length + 4 if ablation == "full" else sequence_length
+        self.rstr = TSATTHead(rstr_channels, output_channels=sequence_length, patch_size=rstr_patch_size, embed_dim=rstr_embed_dim, num_heads=rstr_heads, num_layers=rstr_layers)
 
     def _frames_from_input(self, x: torch.Tensor) -> torch.Tensor:
         if x.shape[1] < 9:
@@ -156,14 +200,15 @@ class TrackNetV5(nn.Module):
         draft_logits = self.backbone.forward_logits(draft_input)
         if self.ablation == "mdd":
             return self.motion_gate(torch.cat([draft_logits, motion_maps], dim=1))
-        draft_mdd = self.motion_gate(torch.cat([draft_logits, motion_maps], dim=1)) if self.ablation == "full" else draft_logits
+        draft_mdd = self.draft_mdd(draft_logits, motion_maps) if self.ablation == "full" else draft_logits
         draft_for_residual = self.context_dropout(draft_mdd) if self.training else draft_mdd
         residual = self.rstr(draft_for_residual)
         # The V5 paper defines the training prediction as
         # sigmoid(Dropout(DraftMDD) + Delta_train). The clean draft is used at
         # inference only. Keeping this branch explicit prevents the refinement
         # head from being trained against a different formula than deployment.
-        return draft_for_residual + residual
+        base_draft = self.motion_gate(draft_for_residual) if self.ablation == "full" else draft_for_residual[:, : self.sequence_length]
+        return base_draft + residual
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return torch.sigmoid(self.forward_logits(x))

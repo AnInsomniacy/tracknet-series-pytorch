@@ -1,9 +1,4 @@
-"""TrackNetV4 motion-aware fusion.
-
-The V4 paper introduces a lightweight plug-in: absolute grayscale frame
-differences are passed through a learnable motion prompt layer, then fused with
-high-level visual logits before Sigmoid.
-"""
+"""TrackNetV4 motion-aware feature fusion."""
 
 from __future__ import annotations
 
@@ -42,7 +37,8 @@ class TrackNetV4(nn.Module):
         self.fusion_variant = fusion_variant
         self.backbone = V2EncoderDecoder(in_ch, out_ch, dropout=dropout, base_channels=base_channels)
         self.motion_prompt = MotionPromptV4()
-        self.fusion_output = nn.Conv2d(base_channels, out_ch, kernel_size=1)
+        fusion_channels = base_channels if fusion_variant == "mean" else base_channels * sequence_length
+        self.fusion_output = nn.Conv2d(fusion_channels, out_ch, kernel_size=1)
 
     def _frames_from_input(self, x: torch.Tensor) -> torch.Tensor:
         needed = self.sequence_length * 3
@@ -57,14 +53,12 @@ class TrackNetV4(nn.Module):
         if self.fusion_variant == "mean":
             fused_feature = visual_features * attention.mean(dim=1, keepdim=True)
             return self.fusion_output(fused_feature)
-        base_logits = self.fusion_output(visual_features)
-        # V4 Eq. (4): [V_t, A_t*V_{t+1}, ...] before Sigmoid. The shared
-        # feature tensor is projected after fusion so the backbone's original
-        # heatmap output layer is not part of the V4 motion path.
-        fused = [base_logits[:, 0:1]]
+        # Eq. (4) is a feature-level fusion: the motion maps modulate high-level
+        # visual representations before the final heatmap projection.
+        fused = [visual_features]
         for t in range(1, self.sequence_length):
-            fused.append(base_logits[:, t : t + 1] * attention[:, t - 1 : t])
-        return torch.cat(fused, dim=1)
+            fused.append(visual_features * attention[:, t - 1 : t])
+        return self.fusion_output(torch.cat(fused, dim=1))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return torch.sigmoid(self.forward_logits(x))

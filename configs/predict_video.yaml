@@ -6,8 +6,6 @@ inference:
   target_width: 512
   target_height: 288
   sequence_length: 3
-  target_frame_mode: all
-  include_background: false
   threshold: 0.5
   batch_size: 4
   device: auto

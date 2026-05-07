@@ -4,6 +4,7 @@ from pathlib import Path
 
 from tracknet.data.dataset import ProcessedTrackNetDataset, TrackNetDatasetConfig
 from tracknet.data.raw_reader import discover_raw_sequences, load_raw_annotations
+from tracknet.papers.base import HeatmapTargetPolicy
 
 
 def test_legacy_raw_reader_and_preprocess(synthetic_raw_root: Path, synthetic_processed_root: Path) -> None:
@@ -21,10 +22,8 @@ def test_processed_dataset_window_shapes(synthetic_processed_root: Path) -> None
         TrackNetDatasetConfig(
             processed_root=synthetic_processed_root,
             sequence_length=3,
-            target_frame_mode="all",
-            heatmap_mode="gaussian",
-            sigma=2.0,
-        )
+        ),
+        target_policy=HeatmapTargetPolicy(target_frame_mode="all", heatmap_mode="gaussian", sigma=2.0),
     )
     sample = ds[0]
     assert sample["input"].shape == (9, 32, 32)
@@ -38,11 +37,13 @@ def test_v3_background_input_and_binary_targets(synthetic_processed_root: Path) 
         TrackNetDatasetConfig(
             processed_root=synthetic_processed_root,
             sequence_length=4,
+        ),
+        target_policy=HeatmapTargetPolicy(
             target_frame_mode="all",
             heatmap_mode="binary_disk",
             radius=2,
             include_background=True,
-        )
+        ),
     )
     sample = ds[0]
     assert sample["input"].shape == (15, 32, 32)

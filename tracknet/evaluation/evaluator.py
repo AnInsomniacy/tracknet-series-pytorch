@@ -10,11 +10,8 @@ import pandas as pd
 import torch
 from torch.utils.data import DataLoader
 
-from tracknet.data.dataset import ProcessedTrackNetDataset, TrackNetDatasetConfig
-from tracknet.inference.aggregation import aggregate_window_outputs
 from tracknet.inference.postprocess import Prediction
-from tracknet.models import build_model
-from tracknet.papers import dataset_config_with_paper_defaults, get_paper_spec
+from tracknet.papers import get_paper_spec, paper_id_from_model_config
 from tracknet.training.checkpoint import load_checkpoint, load_model_weights
 from tracknet.training.metrics import ConfusionCounts, classify_prediction
 from tracknet.utils.device import select_device
@@ -63,7 +60,7 @@ def _model_config_from_checkpoint(checkpoint_path: Path, explicit_model: dict[st
 
 
 def _resolved_dataset_config(dataset_cfg: dict[str, Any], model_cfg: dict[str, Any]) -> dict[str, Any]:
-    return dataset_config_with_paper_defaults(dataset_cfg, model_cfg)
+    return get_paper_spec(paper_id_from_model_config(model_cfg)).resolved_dataset_config(dataset_cfg)
 
 
 def _target_infos(sample_meta: dict[str, Any]) -> list[dict[str, Any]]:
@@ -107,15 +104,14 @@ def evaluate_checkpoint(cfg: EvaluationConfig) -> EvaluationResult:
             pass
     ensure_dir(cfg.output_dir)
     model_cfg, ckpt = _model_config_from_checkpoint(Path(cfg.checkpoint_path), cfg.model)
-    model_version = str(model_cfg.get("version", model_cfg.get("model_version", "v2"))).lower()
-    paper_spec = get_paper_spec(model_version)
+    paper_spec = get_paper_spec(paper_id_from_model_config(model_cfg))
     device = select_device(cfg.device)
-    model = build_model(model_cfg)
+    model = paper_spec.build_model(model_cfg)
     load_model_weights(model, ckpt, strict=True)
     model.to(device).eval()
 
     resolved_dataset_cfg = _resolved_dataset_config(cfg.dataset, model_cfg)
-    ds = ProcessedTrackNetDataset(TrackNetDatasetConfig.from_mapping(resolved_dataset_cfg))
+    ds = paper_spec.build_heatmap_dataset(resolved_dataset_cfg)
     loader = DataLoader(
         ds,
         batch_size=int(cfg.batch_size),
@@ -139,12 +135,10 @@ def evaluate_checkpoint(cfg: EvaluationConfig) -> EvaluationResult:
     for sequence_id, sample_metas in sequence_metas.items():
         outputs = torch.cat(sequence_outputs[sequence_id], dim=0)
         windows = [_window_frames(meta) for meta in sample_metas]
-        frame_predictions = aggregate_window_outputs(
+        frame_predictions = paper_spec.aggregate_window_outputs(
             outputs,
             windows,
-            postprocess_kind=paper_spec.postprocess_kind,
             sequence_length=int(cfg.dataset.get("sequence_length", model_cfg.get("sequence_length", 3))),
-            target_frame_mode=str(resolved_dataset_cfg.get("target_frame_mode", "all")),
             threshold=float(cfg.threshold),
             hough_threshold=int(cfg.hough_threshold),
         )

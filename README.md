@@ -77,28 +77,30 @@ Fields:
 - `x_raw/y_raw` are original video coordinates.
 - `x_model/y_model` are coordinates after letterboxing into model resolution.
 - Training, evaluation and inference share the same letterbox transform to avoid resize/coordinate drift.
-- Heatmaps are generated on demand by the dataset, so all model versions can share one processed dataset while keeping model-specific target semantics.
+- Heatmaps are generated on demand from paper-owned target policies. The processed dataset stores neutral frames and coordinates only.
 
 ## Paper-to-Code Mapping
 
 | Paper | Module | Key implementation |
 |---|---|---|
-| V1 | `tracknet.models.tracknet_v1.TrackNetV1` | VGG/DeconvNet-style encoder-decoder without U-Net skips; three-frame input predicts the last frame by default; 256-bin grayscale heatmap logits; `CrossEntropyLoss`; Gaussian target scaled to `[0,255]`; post-processing uses threshold 128 followed by Hough circle detection, accepting exactly one circle. |
+| V1 | `tracknet.models.tracknet_v1.TrackNetV1` | VGG/DeconvNet table-aligned encoder-decoder without U-Net skips; three-frame input predicts the last frame by default; 256-bin grayscale heatmap logits; `CrossEntropyLoss`; Gaussian target scaled to `[0,255]`; post-processing uses threshold 128 followed by Hough circle detection, accepting exactly one circle. |
 | V2 | `tracknet.models.tracknet_v2.TrackNetV2` | 512x288 3-in/3-out U-Net; three sigmoid heatmaps; WBCE; threshold plus largest-blob centroid; default tolerance 4 px. |
 | V3 tracker | `tracknet.models.tracknet_v3.TrackNetV3Tracker` | Default eight-frame input plus match-level median background; binary-disk heatmaps; WBCE; overlapping inference uses center-weighted aggregation; preprocessing writes sequence and match median backgrounds. |
 | V3 rectifier | `tracknet.models.tracknet_v3.TrajectoryRectifier` | 1D U-Net trajectory repair; input channels `[x,y,visibility,mask]`; coordinates normalized to `[0,1]`; training masks valid points by ratio; inference builds an inpainting mask with the `delta_y=30` missing-interval rule; masked MSE. |
-| V4 | `tracknet.models.tracknet_v4.TrackNetV4` | Absolute grayscale differencing; learnable motion prompt layer; Eq. (4) fusion via `fusion_variant=eq4` plus the mean-attention ablation via `fusion_variant=mean`; sigmoid heatmaps and WBCE. |
-| V5 | `tracknet.models.tracknet_v5.TrackNetV5` | MDD signed grayscale polarity decoupling; 13-channel input; V2-style coarse draft; R-STR residual refinement; training-only stochastic context dropout; AdamW + MultiStepLR config; binary-disk radius configurable as 30 or 40. |
+| V4 | `tracknet.models.tracknet_v4.TrackNetV4` | Absolute grayscale differencing; learnable motion prompt layer; Eq. (4) feature-level fusion via `fusion_variant=eq4` plus the mean-attention ablation via `fusion_variant=mean`; sigmoid heatmaps and WBCE. |
+| V5 | `tracknet.models.tracknet_v5.TrackNetV5` | MDD signed grayscale polarity decoupling; 13-channel input; V2-style coarse draft; DraftMDD long-range skip; TSATTHead residual refinement with PixelShuffle decoding; training-only stochastic context dropout; AdamW + MultiStepLR config. |
 
 ### Engineering Judgments
 
 - V1 uses 640x360, while later TrackNet variants commonly use 512x288. Target size is configured during preprocessing instead of hard-coded into model code.
-- V1 states `sigma^2=10`; the config uses `sigma=sqrt(10)`.
+- V1 states `sigma^2=10`; this is encoded in the V1 paper target policy.
 - V1 does not fully specify OpenCV Hough parameters. The implementation preserves the paper threshold 128 and centralizes radius parameters in one helper.
-- V3 binary radius is described as based on average shuttlecock size. Because that cannot be inferred reliably for arbitrary data, `radius` is a config value.
+- V3 binary radius is described as based on average shuttlecock size. The default policy keeps the project behavior deterministic, and custom policies can be added in the V3 spec when a dataset requires a different radius.
 - V3 training background uses rally medians followed by a match median. Single-video inference lacks match context, so it uses that video median as a self-contained approximation.
 - V4 describes Eq. (4) fusion and a mean-attention variant; both are selected through `fusion_variant`.
-- V5 reports radius 40 for its high-resolution internal data and radius 30 for TrackNetV2-sized data; configs default to 30 and can be adjusted.
+- V5 reports radius 40 for its high-resolution internal data and radius 30 for TrackNetV2-sized data; the V5 policy defaults to the TrackNetV2-sized setting.
+
+Pipeline engines are intentionally paper-agnostic. Training, evaluation, inference and visualization load a `PaperSpec`, then call its model, target, post-processing and aggregation contract. Dataset configs describe sampling only, not heatmap modes or paper versions.
 
 ## Installation
 
@@ -266,7 +268,7 @@ Frame,Visibility,X,Y
 1,0,-1,-1
 ```
 
-Inference is frame-preserving: CSV row count matches the input frame count, and overlay video keeps input order, size and FPS. Overlapping MIMO window predictions are reduced with center-weighted heatmap aggregation; V1 uses prefix padding for early frames.
+Inference is frame-preserving: CSV row count matches the input frame count, and overlay video keeps input order, size and FPS. It streams frames and window batches instead of materializing the whole video or all window outputs. Overlapping MIMO window predictions are reduced with center-weighted heatmap aggregation; V1 uses prefix padding for early frames.
 
 The V3 rectifier can be enabled during video inference:
 
@@ -304,6 +306,7 @@ Coverage includes:
 - checkpoint save/load;
 - evaluation classification and metrics;
 - frame-preserving video inference CSV output;
+- streaming video inference contracts;
 - minimal training smoke tests and best/last/model_best checkpoints;
 - sequence-safe validation splitting;
 - AMP metadata and CPU fallback;

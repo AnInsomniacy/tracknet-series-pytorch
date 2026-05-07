@@ -6,9 +6,6 @@ model:
 dataset:
   processed_root: test_results/synthetic_processed
   sequence_length: 3
-  target_frame_mode: all
-  heatmap_mode: gaussian
-  sigma: 2.0
 
 train:
   experiment_name: smoke_cpu
