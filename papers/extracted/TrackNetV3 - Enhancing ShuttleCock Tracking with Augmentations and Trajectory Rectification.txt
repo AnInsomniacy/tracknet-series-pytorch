@@ -1,4 +1,3 @@
-===== PAGE 1 =====
 TrackNetV3: Enhancing ShuttleCock Tracking with
 Augmentations and Trajectory Rectification
 Yu-Jou Chen
@@ -74,7 +73,6 @@ shuttlecock can blend seamlessly into the background components,
 such as the net and court lines, rendering it nearly invisible if its
 dynamics are not analyzed through consecutive video frames.
 
-===== PAGE 2 =====
 MMAsia ’23, December 6–8, 2023, Tainan, Taiwan
 Chen and Wang
 Given these challenges, our goal is to develop a more precise
@@ -181,7 +179,6 @@ module (see Figure 3 (a)) is designed with a U-Net structure, in-
 corporating convolution layers and skip connections. The inputs
 to this network are concatenated video frames and an estimated
 
-===== PAGE 3 =====
 TrackNetV3: Enhancing ShuttleCock Tracking with Augmentations and Trajectory Rectification
 MMAsia ’23, December 6–8, 2023, Tainan, Taiwan
 (a) Tracking module
@@ -310,7 +307,6 @@ The model’s failure to predict the shuttlecock’s presence can be
 ascribed to three scenarios: occlusion by an object, extreme diffi-
 culty to discern visually, or the shuttlecock simply flying out of the
 
-===== PAGE 4 =====
 MMAsia ’23, December 6–8, 2023, Tainan, Taiwan
 Chen and Wang
 camera’s field of view. As the shuttlecock is only considered exis-
@@ -448,7 +444,6 @@ TrackNetV2 struggle with detecting specific challenging samples,
 1https://github.com/WongKinYiu/yolov7
 2https://nol.cs.nctu.edu.tw:234/open-source/TrackNetv2
 
-===== PAGE 5 =====
 TrackNetV3: Enhancing ShuttleCock Tracking with Augmentations and Trajectory Rectification
 MMAsia ’23, December 6–8, 2023, Tainan, Taiwan
 Ground truth
@@ -513,7 +508,6 @@ was applied. This suggests that different strategies for incorporating
 background information may have varying interactions with other
 methods used in the tracking module, such as data augmentation.
 
-===== PAGE 6 =====
 MMAsia ’23, December 6–8, 2023, Tainan, Taiwan
 Chen and Wang
 Method
@@ -724,7 +718,6 @@ partially supported by the National Science and Technology Council
 2221-E-A49 -129 -MY3, and by Industrial Technology Research
 Institute (ITRI), Taiwan.
 
-===== PAGE 7 =====
 TrackNetV3: Enhancing ShuttleCock Tracking with Augmentations and Trajectory Rectification
 MMAsia ’23, December 6–8, 2023, Tainan, Taiwan
 REFERENCES

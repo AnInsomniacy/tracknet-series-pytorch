@@ -1,4 +1,3 @@
-===== PAGE 1 =====
 TrackNetV4: Enhancing Fast Sports Object
 Tracking with Motion Attention Maps
 Arjun Raj
@@ -101,7 +100,6 @@ implicitly using motion dynamics, for example, through the
 subtraction between the original video frame and the estimated
 arXiv:2409.14543v1  [cs.CV]  22 Sep 2024
 
-===== PAGE 2 =====
 TrackNetV2
 Motion-aware 
 fusion path
@@ -196,7 +194,6 @@ blocks. The t-th temporal block is represented as Xt
 =
 [Ft, Ft+1, · · · , FT ′+t−1] ∈RH×W ×3×T ′ for t ∈IT −T ′+1.
 
-===== PAGE 3 =====
 -0.8
 -0.4
 0.0
@@ -320,7 +317,6 @@ i. Game-level: The training set includes ‘game5’, ‘game10’,
 ‘game6’, ‘game2’, ‘game7’, ‘game3’, and ‘game8’, , while
 the test set comprises ‘game1’, ‘game9’, and ‘game4’. This
 
-===== PAGE 4 =====
 TABLE I
 PERFORMANCE AND SPEED COMPARISONS OF BASELINES VERSUS TRACKNETV4 (BASELINES WITH OUR MOTION-AWARE FUSION, DENOTED AS
 +MOTION) ON THE SHUTTLECOCK AND TENNIS BALL TRACKING DATASETS. FOR TENNIS BALL TRACKING, WE APPLY OUR PREDEFINED (I)
@@ -559,7 +555,6 @@ high-speed object tracking. Notably, TrackNetV4’s lightweight
 and modular design allows for easy integration into various
 applications.
 
-===== PAGE 5 =====
 ACKNOWLEDGMENT
 Arjun Raj conducted this research under the supervision of
 Lei Wang for his COMP3770 Computing Research Project
@@ -796,7 +791,6 @@ Input shape: (None, 640, 360, 256)
 Output shape: (None, 640, 360, 256)
 Fig. 5. TrackNetV1.
 
-===== PAGE 6 =====
 input_layer (InputLayer)
 Output shape: (None, 9, 288, 512)
 conv2d (Conv2D)
@@ -1297,7 +1291,6 @@ Output shape: (None, 288, 512, 8)
 Trainable
 Fig. 7. TrackNetV3.
 
-===== PAGE 7 =====
 input_layer (InputLayer)
 Output shape: (None, 9, 288, 512)
 conv2d (Conv2D)
@@ -1442,7 +1435,6 @@ Our TrackNetV4 model integrates modern motion concepts into the traditional 2D C
 visualization purposes). It enables precise, high-speed tracking of small objects in sports activities. We aim to inspire renewed interest in revisiting these older,
 yet still powerful models by enhancing them with contemporary motion concepts [1].
 
-===== PAGE 8 =====
 (a) Singles match.
 (b) Doubles match.
 (c) Visible balls in play on two courts.
@@ -1554,7 +1546,6 @@ tracking datasets is their simplicity. These datasets typically
 feature only a single moving ball on a clean court, leading to
 relatively straightforward scenarios.
 
-===== PAGE 9 =====
 (a) Attention maps from the tennis ball tracking dataset [6].
 (b) Attention maps from the tennis ball tracking dataset [6].
 (c) Attention maps from the shuttlecock tracking dataset [10].
@@ -1586,7 +1577,6 @@ our challenging tennis ball tracking dataset. For all experi-
 ments, we adhere to the parameter settings specified by the
 original authors for training models from scratch, including
 
-===== PAGE 10 =====
 (a)
 (b)
 (c)
@@ -1726,7 +1716,6 @@ TrackNetV4 (version 2)
 97.0
 179.2
 
-===== PAGE 11 =====
 (a)
 (b)
 (c)
@@ -1770,7 +1759,6 @@ per-layer weight similarity for both training from scratch and
 fine-tuning the baseline using TrackNetV4. We observe signif-
 icant differences in the per-layer weights between fine-tuning
 
-===== PAGE 12 =====
 (a)
 (b)
 (c)
@@ -1838,7 +1826,6 @@ other applications requiring precise object tracking.
 Current TrackNet models rely on traditional 2D CNNs for
 video-based ball tracking. While these models are effective,
 
-===== PAGE 13 =====
 (a)
 (b)
 (c)
@@ -1847,7 +1834,6 @@ Fig. 15. Comparison of feature maps and heatmaps with and without motion-aware f
 dataset [6]. For each group, the first row displays the original video frame, the second and third rows show the feature maps from the baseline model and
 after applying motion-aware fusion, respectively. The fourth and fifth rows present the heatmaps from the baseline model and our TrackNetV4, respectively.
 
-===== PAGE 14 =====
 (a)
 (b)
 (c)
@@ -1856,7 +1842,6 @@ Fig. 16. Comparison of feature maps and heatmaps with and without motion-aware f
 dataset [10]. For each group, the first row displays the original video frame, the second and third rows show the feature maps from the baseline model and
 after applying motion-aware fusion, respectively. The fourth and fifth rows present the heatmaps from the baseline model and our TrackNetV4, respectively.
 
-===== PAGE 15 =====
 (a)
 (b)
 (c)
@@ -1865,7 +1850,6 @@ Comparison of feature maps and heatmaps with and without motion-aware fusion. We
 tracking dataset. For each group, the first row displays the original video frame, the second and third rows show the feature maps from the baseline model and
 after applying motion-aware fusion, respectively. The fourth and fifth rows present the heatmaps from the baseline model and our TrackNetV4, respectively.
 
-===== PAGE 16 =====
 there is certainly room for improvement. Our goal is to revisit
 these well-established, expert-designed architectures and en-
 hance them by integrating modern motion prompts as guidance
@@ -2002,7 +1986,6 @@ International Conference on Acoustics, Speech and Signal Processing
 for action recognition. International Conference on Machine Learning
 (ICML), 2024.
 
-===== PAGE 17 =====
 [16] Jinglin Xu, Yijie Guo, and Yuxin Peng. Finepose: Fine-grained prompt-
 driven 3d human pose estimation via diffusion models. In Proceedings of
 the IEEE/CVF Conference on Computer Vision and Pattern Recognition,

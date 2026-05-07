@@ -1,4 +1,3 @@
-===== PAGE 1 =====
 TrackNetV2: Efﬁcient Shuttlecock Tracking
 Network
 Nien-En Sun
@@ -91,7 +90,6 @@ DOI 10.1109/ICPAI51961.2020.00023
 978-1-6654-0483-9/20/$31.00 ©2020 IEEE
 Authorized licensed use limited to: Carleton University. Downloaded on May 29,2021 at 04:03:50 UTC from IEEE Xplore.  Restrictions apply.
 
-===== PAGE 2 =====
 input to beneﬁt detection implicitly from trajectory patterns.
 It was reported that the precision, recall, and F1-measure
 are respectively 95.3%, 75.7%, and 84.3% in a 10-fold cross
@@ -204,7 +202,6 @@ TrackNet and many other CNNs, TrackNetV2 follows the
 87
 Authorized licensed use limited to: Carleton University. Downloaded on May 29,2021 at 04:03:50 UTC from IEEE Xplore.  Restrictions apply.
 
-===== PAGE 3 =====
 encoder-decoder structure. The encoder, as a feature extrac-
 tor, captures the image clue by the convolution kernels and
 condenses the features by the max-pooling operation. On the
@@ -378,7 +375,6 @@ put of the model is multiples time increased. For example, a
 88
 Authorized licensed use limited to: Carleton University. Downloaded on May 29,2021 at 04:03:50 UTC from IEEE Xplore.  Restrictions apply.
 
-===== PAGE 4 =====
 Fig. 2. The architecture of TrackNetV2. The encoder-decoder structure basically follows the design of TrackNet. Compared with the orignal TrackNet, the
 innovation includes the downsizing of input images, skip connections enlightened by U-net, concise heatmap representation, and MIMO network design.
 Fig. 3. TrackNet generates a 256-channel boolean array for the ball detection.
@@ -416,7 +412,6 @@ detection heatmaps, and the visibility will be used to categorize
 89
 Authorized licensed use limited to: Carleton University. Downloaded on May 29,2021 at 04:03:50 UTC from IEEE Xplore.  Restrictions apply.
 
-===== PAGE 5 =====
 Fig. 5. To avoid overﬁtting, the dataset contains rally clips from 15 broadcast
 video taken from various view angles and played on courts of various colors.
 the hardness of the detection task. In TrackNet, the input image
@@ -544,7 +539,6 @@ model’s parameters by MIMO design.
 90
 Authorized licensed use limited to: Carleton University. Downloaded on May 29,2021 at 04:03:50 UTC from IEEE Xplore.  Restrictions apply.
 
-===== PAGE 6 =====
 Model
 Input size heatmap skip connection
 Speed

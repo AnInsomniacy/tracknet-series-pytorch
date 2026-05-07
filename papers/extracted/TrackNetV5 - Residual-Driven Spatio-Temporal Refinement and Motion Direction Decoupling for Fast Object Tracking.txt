@@ -1,4 +1,3 @@
-===== PAGE 1 =====
 TRACKNETV5: RESIDUAL-DRIVEN SPATIO-TEMPORAL
 REFINEMENT AND MOTION DIRECTION DECOUPLING FOR FAST
 OBJECT TRACKING ∗
@@ -48,7 +47,6 @@ Motion Direction Decoupling for Fast Object Tracking. Submitted to ArXiv (2025).
 ∥Corresponding author
 arXiv:2512.02789v4  [cs.CV]  13 Jan 2026
 
-===== PAGE 2 =====
 TrackNetV5
 lighting, and frequent occlusion by athletes. Consequently, traditional visual tracking methods often struggle to maintain
 robust localization under such dynamic conditions.
@@ -101,7 +99,6 @@ our TrackNetV5 introduces a polarity-aware motion decoupling mechanism to recove
 maintaining high efficiency.
 2
 
-===== PAGE 3 =====
 TrackNetV5
 2.2
 Motion Representation in Video Analysis
@@ -157,7 +154,6 @@ as the absolute difference operation inherently discards the polarity of intensi
 propose the Motion Direction Decoupling (MDD) module. As illustrated in Figure 3, this module decomposes temporal
 3
 
-===== PAGE 4 =====
 TrackNetV5
 Figure 1: Overall Architecture of TrackNetV5.
 Figure 2: Detailed architecture of the V2 Encoder-Decoder.
@@ -182,7 +178,6 @@ signals into robust attention weights constrained to [0, 1], we employ a paramet
 For a given polarity intensity x, the attention weight A is computed as:
 4
 
-===== PAGE 5 =====
 TrackNetV5
 Figure 3: The overall architecture of the Motion Direction Decoupling (MDD) mechanism.
 Figure 4: Schematic illustration of the Polarity Decomposition Layer.
@@ -211,7 +206,6 @@ Xin = Concat (It−1, At−1,t, It, At,t+1, It+1)
 (4)
 5
 
-===== PAGE 6 =====
 TrackNetV5
 Figure 5: The workflow of the Residual-Driven Spatio-Temporal Refinement (R-STR) module. The Dropout mechanism
 is active only during the training phase.
@@ -242,7 +236,6 @@ masked input as Draft′
 MDD = Dropout(DraftMDD).
 6
 
-===== PAGE 7 =====
 TrackNetV5
 The final heatmap refinement is formulated according to the stage:
 During Training, the Dropout mechanism is active, and the final prediction is calculated from the corrupted draft
@@ -286,7 +279,6 @@ Datasets and Inputs. We evaluate our method on two datasets: the public TrackNet
 internal Loveall Dataset (1920 × 1080). Following standard protocols [2], the data is split into training and validation
 7
 
-===== PAGE 8 =====
 TrackNetV5
 Table 1: Quantitative comparison on the TrackNetV2 Dataset. The best results are highlighted in bold.
 Model
@@ -393,7 +385,6 @@ the requirement for standard sports broadcasting (30/60 FPS). This demonstrates 
 favorable trade-off, delivering substantial accuracy gains with negligible computational cost.
 8
 
-===== PAGE 9 =====
 TrackNetV5
 Table 2: Generalization test on the Loveall Dataset.
 Model
@@ -544,7 +535,6 @@ achieved with minimal computational overhead (GFLOPs increased by only 3.7% over
 high efficiency of our design.
 9
 
-===== PAGE 10 =====
 TrackNetV5
 Table 5: Ablation study on the R-STR Module. While "V2 + R-STR" achieves the highest F1, it incurs higher False
 Positives compared to the final TrackNetV5.
@@ -605,7 +595,6 @@ exact spatial overlap with the true ball position. This complete superimposition
 for that specific frame, highlighting the precision attained by the model.
 10
 
-===== PAGE 11 =====
 TrackNetV5
 Figure 8: Comparative visualization of models V2, V4, and V5 on TrackNet Dataset. Each block of three rows
 corresponds to one model.
@@ -613,7 +602,6 @@ Figure 9: Comparative visualization of models V2, V4, and V5 on TrackNet Dataset
 corresponds to one model.
 11
 
-===== PAGE 12 =====
 TrackNetV5
 Figure 10: Comparative visualization of models V2, V4, and V5 on TrackNet Dataset. Each block of three rows
 corresponds to one model.
@@ -621,13 +609,11 @@ Figure 11: Comparative visualization of models V2, V4, and V5 on LoveAll Dataset
 corresponds to one model.
 12
 
-===== PAGE 13 =====
 TrackNetV5
 Figure 12: Comparative visualization of models V2, V4, and V5 on LoveAll Dataset. Each block of three rows
 corresponds to one model.
 13
 
-===== PAGE 14 =====
 TrackNetV5
 Acknowledgments
 This work was supported by Shanghai Code Zero Sports Technology Co., which provided funding, computational
