@@ -1,0 +1,87 @@
+# Python bytecode and test caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.pyre/
+.ruff_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# Build and packaging artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+*.egg
+pip-wheel-metadata/
+
+# Virtual environments and local interpreter state
+.venv/
+venv/
+env/
+ENV/
+.python-version
+
+# Local configuration and secrets
+.env
+.env.*
+*.local
+
+# IDE, editor, and OS files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Runtime data and generated experiment outputs
+data/
+outputs/
+test_results/
+runs/
+logs/
+wandb/
+tensorboard/
+mlruns/
+lightning_logs/
+
+# Model checkpoints, exported weights, and accelerator artifacts
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.onnx
+*.engine
+*.trt
+*.plan
+*.torchscript
+
+# Generated prediction and visualization media
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.m4v
+*.webm
+*.gif
+
+# Generated tables and reports outside versioned paper assets
+*.parquet
+*.feather
+*.sqlite
+*.db
+
+# Keep bundled paper sources and curated paper extraction assets versioned
+!papers/
+!papers/**/*.pdf
+!papers/extracted/
+!papers/extracted/**
