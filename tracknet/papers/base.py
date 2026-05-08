@@ -2,34 +2,18 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Callable, Literal
 
 import torch
 import torch.nn as nn
 
+from tracknet.data.targets import HeatmapTargetPolicy
+
 PostprocessKind = Literal["v1_hough", "largest_blob"]
-
-
-@dataclass(frozen=True)
-class HeatmapTargetPolicy:
-    """Paper-owned target and input semantics for heatmap datasets.
-
-    The processed dataset is intentionally neutral: it knows how to read frames,
-    annotations, backgrounds, and sliding windows. This policy injects the
-    paper-specific target representation and optional input augmentation.
-    Keeping this object outside the dataset prevents global data code from
-    becoming a switchboard for TrackNetV1-V5 behavior.
-    """
-
-    target_frame_mode: str = "all"
-    heatmap_mode: str = "gaussian"
-    sigma: float = 3.0
-    radius: float = 30.0
-    include_background: bool = False
-    video_mixup_alpha: float = 0.0
-    video_mixup_probability: float = 0.0
-    seed: int = 26
+TrainingDatasetKind = Literal["heatmap", "trajectory"]
+SplitStrategy = Literal["sequence", "trajectory_sequence"]
+WindowAggregationKind = Literal["last", "weighted_heatmap"]
 
 
 @dataclass(frozen=True)
@@ -49,6 +33,9 @@ class PaperSpec:
     target_policy: HeatmapTargetPolicy | None = None
     postprocess_kind: PostprocessKind = "largest_blob"
     tolerance_pixels: float = 4.0
+    training_dataset_kind: TrainingDatasetKind = "heatmap"
+    split_strategy: SplitStrategy = "sequence"
+    window_aggregation: WindowAggregationKind = "weighted_heatmap"
 
     def build_model(self, cfg: dict[str, Any]) -> nn.Module:
         if self.model_factory is None:
@@ -67,7 +54,6 @@ class PaperSpec:
             "stochastic_context_dropout",
             "fusion_variant",
             "hidden_channels",
-            "ablation",
         ]:
             if key in cfg and key not in kwargs:
                 kwargs[key] = cfg[key]
@@ -86,23 +72,16 @@ class PaperSpec:
         if policy is None:
             policy = HeatmapTargetPolicy()
         if "seed" in resolved:
-            policy = HeatmapTargetPolicy(
-                target_frame_mode=policy.target_frame_mode,
-                heatmap_mode=policy.heatmap_mode,
-                sigma=policy.sigma,
-                radius=policy.radius,
-                include_background=policy.include_background,
-                video_mixup_alpha=policy.video_mixup_alpha,
-                video_mixup_probability=policy.video_mixup_probability,
-                seed=int(resolved["seed"]),
-            )
+            policy = replace(policy, seed=int(resolved["seed"]))
         return ProcessedTrackNetDataset(TrackNetDatasetConfig.from_mapping(resolved), target_policy=policy)
 
     def build_training_dataset(self, dataset_cfg: dict[str, Any]):
-        if self.paper_id.endswith("rectifier"):
+        if self.training_dataset_kind == "trajectory":
             from tracknet.data.trajectory_dataset import TrajectoryRectifierDataset, TrajectoryRectifierDatasetConfig
 
             return TrajectoryRectifierDataset(TrajectoryRectifierDatasetConfig.from_mapping(self.resolved_dataset_config(dataset_cfg)))
+        if self.training_dataset_kind != "heatmap":
+            raise ValueError(f"Unsupported training dataset kind: {self.training_dataset_kind}")
         return self.build_heatmap_dataset(dataset_cfg)
 
     def aggregate_window_outputs(
@@ -116,13 +95,12 @@ class PaperSpec:
     ):
         from tracknet.inference.aggregation import aggregate_window_outputs
 
-        mode = self.target_policy.target_frame_mode if self.target_policy is not None else "all"
         return aggregate_window_outputs(
             outputs,
             windows,
             postprocess_kind=self.postprocess_kind,
             sequence_length=sequence_length,
-            target_frame_mode=mode,
+            aggregation_mode=self.window_aggregation,
             threshold=threshold,
             hough_threshold=hough_threshold,
         )
@@ -130,6 +108,6 @@ class PaperSpec:
     def video_windows(self, frame_count: int, sequence_length: int) -> list[list[int]]:
         from tracknet.inference.windowing import last_frame_windows, sliding_windows
 
-        if self.postprocess_kind == "v1_hough" or (self.target_policy and self.target_policy.target_frame_mode == "last"):
+        if self.window_aggregation == "last":
             return last_frame_windows(frame_count, sequence_length)
         return sliding_windows(frame_count, sequence_length)

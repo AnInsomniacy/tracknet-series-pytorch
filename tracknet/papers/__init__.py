@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from tracknet.papers.base import PaperSpec
 from tracknet.papers.v1.spec import build_spec as build_v1_spec
 from tracknet.papers.v2.spec import build_spec as build_v2_spec
 from tracknet.papers.v3.spec import build_rectifier_spec as build_v3_rectifier_spec
 from tracknet.papers.v3.spec import build_tracker_spec as build_v3_spec
 from tracknet.papers.v4.spec import build_spec as build_v4_spec
+from tracknet.papers.v5.spec import build_full_spec as build_v5_full_spec
+from tracknet.papers.v5.spec import build_mdd_spec as build_v5_mdd_spec
+from tracknet.papers.v5.spec import build_rstr_spec as build_v5_rstr_spec
 from tracknet.papers.v5.spec import build_spec as build_v5_spec
 
 
@@ -19,6 +24,9 @@ def _build_specs() -> dict[str, PaperSpec]:
         "v3_rectifier": build_v3_rectifier_spec(),
         "v4": build_v4_spec(),
         "v5": build_v5_spec(),
+        "v5_mdd": build_v5_mdd_spec(),
+        "v5_rstr": build_v5_rstr_spec(),
+        "v5_full": build_v5_full_spec(),
     }
 
 
@@ -37,9 +45,6 @@ def normalize_paper_id(name: str) -> str:
     aliases = {
         "rectifier": "v3_rectifier",
         "trajectory_rectifier": "v3_rectifier",
-        "v5_mdd": "v5",
-        "v5_rstr": "v5",
-        "v5_full": "v5",
     }
     return aliases.get(key, key)
 

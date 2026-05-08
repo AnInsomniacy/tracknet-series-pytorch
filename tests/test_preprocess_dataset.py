@@ -4,7 +4,7 @@ from pathlib import Path
 
 from tracknet.data.dataset import ProcessedTrackNetDataset, TrackNetDatasetConfig
 from tracknet.data.raw_reader import discover_raw_sequences, load_raw_annotations
-from tracknet.papers.base import HeatmapTargetPolicy
+from tracknet.data.targets import HeatmapTargetPolicy
 
 
 def test_legacy_raw_reader_and_preprocess(synthetic_raw_root: Path, synthetic_processed_root: Path) -> None:

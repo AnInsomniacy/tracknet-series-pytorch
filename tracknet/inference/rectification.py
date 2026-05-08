@@ -36,10 +36,12 @@ def _model_config_from_checkpoint(checkpoint_path: Path, explicit_model: dict[st
 
 
 def build_v3_inpainting_mask(predictions: list[Prediction], *, delta_y_pixels: float) -> np.ndarray:
-    """Mask missing intervals using the V3 y-distance rule.
+    """Mask missing intervals using the V3 height-threshold rule.
 
-    M_i is set to 1 for an undetected frame when the closest previous and next
-    detections have vertical positions within `delta_y_pixels`.
+    The V3 paper marks a missing interval as inpaintable when both bounding
+    detections are near the top of the image, using `p_f_y < delta` and
+    `p_b_y < delta`. This distinguishes likely occlusion/missed detections
+    from trajectories that have left the field of view.
     """
     n = len(predictions)
     mask = np.zeros(n, dtype=np.float32)
@@ -54,7 +56,7 @@ def build_v3_inpainting_mask(predictions: list[Prediction], *, delta_y_pixels: f
             continue
         p = prev_candidates[-1]
         q = next_candidates[0]
-        if abs(predictions[p].y - predictions[q].y) < delta_y_pixels:
+        if predictions[p].y < delta_y_pixels and predictions[q].y < delta_y_pixels:
             mask[i] = 1.0
     return mask
 

@@ -170,10 +170,26 @@ def test_v3_trajectory_dataset_and_inpainting_mask(synthetic_processed_root: Pat
     sample = ds[0]
     assert sample["input"].shape == (4, 4)
     assert sample["target"].shape == (3, 4)
-    preds = [Prediction(1, 0, 10, 1), Prediction(0, -1, -1, 0), Prediction(1, 2, 15, 1), Prediction(0, -1, -1, 0)]
+    preds = [Prediction(1, 0, 5, 1), Prediction(0, -1, -1, 0), Prediction(1, 2, 15, 1), Prediction(0, -1, -1, 0)]
     mask = build_v3_inpainting_mask(preds, delta_y_pixels=10)
-    assert mask[1] == 1
+    assert mask[1] == 0
     assert mask[3] == 0
+
+
+def test_v3_inpainting_mask_matches_paper_height_threshold() -> None:
+    paper_repairable = [
+        Prediction(1, 0, 8, 1),
+        Prediction(0, -1, -1, 0),
+        Prediction(1, 2, 9, 1),
+    ]
+    visually_similar_but_out_of_field = [
+        Prediction(1, 0, 50, 1),
+        Prediction(0, -1, -1, 0),
+        Prediction(1, 2, 55, 1),
+    ]
+
+    assert build_v3_inpainting_mask(paper_repairable, delta_y_pixels=30).tolist() == [0.0, 1.0, 0.0]
+    assert build_v3_inpainting_mask(visually_similar_but_out_of_field, delta_y_pixels=30).tolist() == [0.0, 0.0, 0.0]
 
 
 def test_evaluation_counts_each_frame_once(tmp_path: Path, synthetic_processed_root: Path) -> None:

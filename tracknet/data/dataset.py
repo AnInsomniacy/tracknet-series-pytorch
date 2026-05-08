@@ -19,8 +19,8 @@ from tracknet.constants import (
     PROCESSED_Y_MODEL_COL,
 )
 from tracknet.data.heatmaps import make_heatmap
+from tracknet.data.targets import HeatmapTargetPolicy
 from tracknet.data.transforms import image_to_tensor_chw_uint8_rgb
-from tracknet.papers.base import HeatmapTargetPolicy
 from tracknet.utils.io import read_json
 
 

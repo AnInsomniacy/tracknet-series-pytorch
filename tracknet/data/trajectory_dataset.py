@@ -93,7 +93,7 @@ class TrajectoryRectifierDataset(Dataset[dict[str, Any]]):
             chosen = rng.choice(visible_indices, size=min(n_to_mask, len(visible_indices)), replace=False)
             mask[chosen] = 1.0
         # Preserve the V3 inference prior in training: only repair gaps whose
-        # bounding detections have similar vertical position (delta_y criterion).
+        # bounding detections are both above the paper's height threshold.
         invisible = np.flatnonzero(visible < 0.5)
         for i in invisible:
             prev_candidates = visible_indices[visible_indices < i]
@@ -102,7 +102,7 @@ class TrajectoryRectifierDataset(Dataset[dict[str, Any]]):
                 continue
             p = prev_candidates[-1]
             n = next_candidates[0]
-            if abs((coords[1, p] - coords[1, n]) * (self.height - 1)) < self.cfg.delta_y_pixels:
+            if (coords[1, p] * (self.height - 1)) < self.cfg.delta_y_pixels and (coords[1, n] * (self.height - 1)) < self.cfg.delta_y_pixels:
                 mask[i] = 1.0
         return mask
 

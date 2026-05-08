@@ -173,8 +173,7 @@ class StreamingWindowAggregator:
         self._finalized: dict[int, Prediction] = {}
 
     def add_batch(self, outputs: torch.Tensor, windows: list[list[int]]) -> None:
-        mode = self.paper_spec.target_policy.target_frame_mode if self.paper_spec.target_policy is not None else "all"
-        if mode == "last" or self.paper_spec.postprocess_kind == "v1_hough":
+        if self.paper_spec.window_aggregation == "last":
             for item in self.paper_spec.aggregate_window_outputs(
                 outputs,
                 windows,

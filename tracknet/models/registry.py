@@ -9,10 +9,5 @@ from tracknet.papers import get_paper_spec, paper_id_from_model_config
 
 def build_model(cfg: dict[str, Any]) -> nn.Module:
     version = paper_id_from_model_config(cfg).lower()
-    model_cfg = dict(cfg)
-    if version.endswith("_mdd"):
-        model_cfg["ablation"] = "mdd"
-    elif version.endswith("_rstr"):
-        model_cfg["ablation"] = "rstr"
     spec = get_paper_spec(version)
-    return spec.build_model(model_cfg)
+    return spec.build_model(dict(cfg))

@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from tracknet.data.targets import HeatmapTargetPolicy
 from tracknet.models.tracknet_v2 import TrackNetV2
-from tracknet.papers.base import HeatmapTargetPolicy, PaperSpec
+from tracknet.papers.base import PaperSpec
 
 
 def build_spec() -> PaperSpec:

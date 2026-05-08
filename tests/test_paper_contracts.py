@@ -23,7 +23,7 @@ import tracknet.papers.v3.spec as v3_spec
 import tracknet.papers.v4.spec as v4_spec
 import tracknet.papers.v5.spec as v5_spec
 from tracknet.data.dataset import ProcessedTrackNetDataset, TrackNetDatasetConfig
-from tracknet.papers.base import HeatmapTargetPolicy
+from tracknet.data.targets import HeatmapTargetPolicy
 from tracknet.models.tracknet_v4 import TrackNetV4
 from tracknet.models.tracknet_v1 import TrackNetV1
 from tracknet.models.tracknet_v5 import DraftMDDFusion, MotionAwareDraftProjector, TrackNetV5
@@ -45,7 +45,8 @@ def test_paper_specs_expose_independent_dataset_contracts() -> None:
     assert v5.target_policy is not None
     assert v5.target_policy.heatmap_mode == "binary_disk"
     assert v5.dataset_defaults["sequence_length"] == 3
-    assert get_paper_spec("v5_rstr").paper_id == "v5"
+    assert get_paper_spec("v5_rstr").paper_id == "v5_rstr"
+    assert get_paper_spec("v5_rstr").model_version == "v5"
 
 
 def test_pipeline_engines_do_not_embed_paper_version_branches() -> None:
@@ -69,6 +70,20 @@ def test_pipeline_engines_do_not_embed_paper_version_branches() -> None:
         lowered = source.lower()
         for pattern in forbidden_patterns:
             assert re.search(pattern, lowered) is None
+
+
+def test_paper_spec_base_uses_explicit_strategies_not_id_suffixes() -> None:
+    import tracknet.papers.base as base
+
+    source = inspect.getsource(base.PaperSpec)
+    assert "endswith" not in source
+    assert "target_frame_mode" not in source
+
+
+def test_training_split_selection_uses_spec_strategy_not_paper_id_suffix() -> None:
+    source = inspect.getsource(trainer.TrackNetTrainer)
+
+    assert "endswith" not in source
 
 
 def test_dataset_config_is_sampling_only_not_paper_semantics() -> None:
@@ -192,6 +207,12 @@ def test_v5_registry_exposes_paper_ablation_models() -> None:
         assert model(torch.rand(1, 9, 32, 32)).shape == (1, 3, 32, 32)
 
 
+def test_v5_ablation_semantics_live_in_paper_specs() -> None:
+    assert build_model({"version": "v5_mdd", "base_channels": 4}).ablation == "mdd"
+    assert build_model({"version": "v5_rstr", "base_channels": 4, "rstr_patch_size": 8, "rstr_embed_dim": 16, "rstr_heads": 2}).ablation == "rstr"
+    assert build_model({"version": "v5_full", "base_channels": 4, "rstr_patch_size": 8, "rstr_embed_dim": 16, "rstr_heads": 2}).ablation == "full"
+
+
 def test_model_registry_accepts_paper_spec_aliases() -> None:
     assert build_model({"version": "tracknet_v1", "base_channels": 4})(torch.rand(1, 9, 32, 32)).shape == (1, 256, 32, 32)
     assert build_model({"version": "trajectory_rectifier", "hidden_channels": 4})(torch.rand(1, 4, 16)).shape == (1, 2, 16)
@@ -201,7 +222,17 @@ def test_model_registry_is_spec_driven_without_version_branch_table() -> None:
     source = inspect.getsource(model_registry.build_model)
 
     assert "if version in" not in source
+    assert "endswith" not in source
+    assert "ablation" not in source
     assert "get_paper_spec" in source
+
+
+def test_paper_base_does_not_own_heatmap_target_semantics() -> None:
+    import tracknet.papers.base as base
+
+    source = inspect.getsource(base)
+    assert "heatmap_mode" not in source
+    assert "include_background" not in source
 
 
 def test_checkpoint_persists_amp_scaler_state(tmp_path: Path) -> None:
@@ -286,7 +317,7 @@ def test_aggregation_accepts_explicit_postprocess_kind_without_model_version_bra
         [[0]],
         postprocess_kind="largest_blob",
         sequence_length=1,
-        target_frame_mode="all",
+        aggregation_mode="weighted_heatmap",
         threshold=0.5,
     )
 
@@ -297,7 +328,7 @@ def test_aggregation_requires_explicit_postprocess_policy() -> None:
     outputs = torch.zeros(1, 1, 8, 8)
 
     try:
-        aggregate_window_outputs(outputs, [[0]], sequence_length=1, target_frame_mode="all", threshold=0.5)
+        aggregate_window_outputs(outputs, [[0]], sequence_length=1, aggregation_mode="weighted_heatmap", threshold=0.5)
     except TypeError:
         return
 

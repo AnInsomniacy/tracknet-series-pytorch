@@ -191,10 +191,12 @@ class TrackNetTrainer:
         train_size = len(dataset) - val_size
         if train_size <= 0:
             raise ValueError("Dataset is too small for the requested validation split")
-        if self.paper_spec.paper_id.endswith("rectifier"):
+        if self.paper_spec.split_strategy == "trajectory_sequence":
             train_indices, val_indices = self._split_indices_by_trajectory_sequence(dataset, val_split)
-        else:
+        elif self.paper_spec.split_strategy == "sequence":
             train_indices, val_indices = self._split_indices_by_sequence(dataset, val_split)
+        else:
+            raise ValueError(f"Unsupported split strategy: {self.paper_spec.split_strategy}")
         if not train_indices or not val_indices:
             raise ValueError("Sequence-safe split produced an empty train or validation set")
         return Subset(dataset, train_indices), Subset(dataset, val_indices)

@@ -40,7 +40,7 @@ def aggregate_window_outputs(
     *,
     postprocess_kind: PostprocessKind,
     sequence_length: int,
-    target_frame_mode: str,
+    aggregation_mode: str,
     threshold: float,
     hough_threshold: int = 128,
 ) -> list[FramePrediction]:
@@ -49,7 +49,7 @@ def aggregate_window_outputs(
     if len(window_list) != int(outputs.shape[0]):
         raise ValueError(f"Expected {len(window_list)} model outputs, got {int(outputs.shape[0])}")
     kind = postprocess_kind
-    if target_frame_mode == "last" or kind == "v1_hough":
+    if aggregation_mode == "last":
         predictions: dict[int, Prediction] = {}
         for sample, window in zip(outputs, window_list):
             frame_id = int(window[-1])

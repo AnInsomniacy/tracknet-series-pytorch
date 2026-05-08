@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from tracknet.data.targets import HeatmapTargetPolicy
 from tracknet.models.tracknet_v3 import TrackNetV3Tracker, TrajectoryRectifier
-from tracknet.papers.base import HeatmapTargetPolicy, PaperSpec
+from tracknet.papers.base import PaperSpec
 
 
 def build_tracker_spec() -> PaperSpec:
@@ -32,6 +33,8 @@ def build_rectifier_spec() -> PaperSpec:
         model_version="v3_rectifier",
         loss_name="trajectory_mse",
         model_factory=TrajectoryRectifier,
+        training_dataset_kind="trajectory",
+        split_strategy="trajectory_sequence",
         dataset_defaults={
             "type": "trajectory",
             "trajectory_length": 16,
