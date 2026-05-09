@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import torch
 
+from tracknet.data.preprocessing import PreprocessConfig, preprocess_dataset
 from tracknet.data.trajectory_dataset import TrajectoryRectifierDataset, TrajectoryRectifierDatasetConfig
 from tracknet.evaluation import EvaluationConfig, evaluate_checkpoint
 from tracknet.inference import VideoPredictionConfig, run_video_prediction
@@ -15,6 +16,16 @@ from tracknet.inference.rectification import build_v3_inpainting_mask
 from tracknet.models import build_model
 from tracknet.training.checkpoint import CheckpointState, load_checkpoint, save_checkpoint
 from tracknet.training.trainer import TrackNetTrainer
+
+
+def _write_split_files(processed_root: Path, train_ids: list[str], val_ids: list[str]) -> tuple[Path, Path]:
+    splits_dir = processed_root / "splits"
+    splits_dir.mkdir(parents=True, exist_ok=True)
+    train_file = splits_dir / "train.txt"
+    val_file = splits_dir / "val.txt"
+    train_file.write_text("\n".join(train_ids) + "\n", encoding="utf-8")
+    val_file.write_text("\n".join(val_ids) + "\n", encoding="utf-8")
+    return train_file, val_file
 
 
 def _write_synthetic_video(path: Path, frames: int = 5, width: int = 32, height: int = 24) -> None:
@@ -89,17 +100,22 @@ def test_evaluation_runs_on_synthetic_processed(tmp_path: Path, synthetic_proces
     assert pd.read_csv(result.predictions_csv).shape[0] > 0
 
 
-def test_train_smoke_saves_checkpoint(tmp_path: Path, synthetic_processed_root: Path) -> None:
+def test_train_smoke_saves_checkpoint(tmp_path: Path, synthetic_processed_two_sequences_root: Path) -> None:
+    train_file, val_file = _write_split_files(synthetic_processed_two_sequences_root, ["match1__rally1"], ["match1__rally2"])
     cfg = {
         "model": {"version": "v2", "sequence_length": 3, "base_channels": 4},
-        "dataset": {"processed_root": str(synthetic_processed_root), "sequence_length": 3},
+        "dataset": {
+            "processed_root": str(synthetic_processed_two_sequences_root),
+            "sequence_length": 3,
+            "train_split_file": str(train_file),
+            "val_split_file": str(val_file),
+        },
         "train": {
             "experiment_name": "smoke",
             "output_root": str(tmp_path / "outputs"),
             "epochs": 1,
             "batch_size": 2,
             "workers": 0,
-            "val_split": 0.34,
             "optimizer": "Adam",
             "lr": 1e-3,
             "loss": "wbce",
@@ -114,16 +130,21 @@ def test_train_smoke_saves_checkpoint(tmp_path: Path, synthetic_processed_root: 
 
 
 def test_train_split_is_sequence_safe(tmp_path: Path, synthetic_processed_two_sequences_root: Path) -> None:
+    train_file, val_file = _write_split_files(synthetic_processed_two_sequences_root, ["match1__rally1"], ["match1__rally2"])
     cfg = {
         "model": {"version": "v2", "sequence_length": 3, "base_channels": 4},
-        "dataset": {"processed_root": str(synthetic_processed_two_sequences_root), "sequence_length": 3},
+        "dataset": {
+            "processed_root": str(synthetic_processed_two_sequences_root),
+            "sequence_length": 3,
+            "train_split_file": str(train_file),
+            "val_split_file": str(val_file),
+        },
         "train": {
             "experiment_name": "split_safe",
             "output_root": str(tmp_path / "outputs"),
             "epochs": 1,
             "batch_size": 2,
             "workers": 0,
-            "val_split": 0.5,
             "optimizer": "Adam",
             "lr": 1e-3,
             "loss": "wbce",
@@ -133,24 +154,136 @@ def test_train_split_is_sequence_safe(tmp_path: Path, synthetic_processed_two_se
     }
     trainer = TrackNetTrainer(cfg)
     train_ds, val_ds = trainer._make_dataset()
-    train_sequences = {train_ds.dataset[window_idx]["sequence_id"] for window_idx in train_ds.indices}
-    val_sequences = {val_ds.dataset[window_idx]["sequence_id"] for window_idx in val_ds.indices}
+    train_sequences = _dataset_sequence_ids(train_ds)
+    val_sequences = _dataset_sequence_ids(val_ds)
     assert train_sequences
     assert val_sequences
     assert train_sequences.isdisjoint(val_sequences)
 
 
-def test_train_amp_setting_is_recorded_in_checkpoint(tmp_path: Path, synthetic_processed_root: Path) -> None:
+def _dataset_sequence_ids(dataset) -> set[str]:
+    if hasattr(dataset, "indices") and hasattr(dataset, "dataset"):
+        return {dataset.dataset[window_idx]["sequence_id"] for window_idx in dataset.indices}
+    if hasattr(dataset, "sequences"):
+        return {str(seq.sequence_id) for seq in dataset.sequences}
+    raise TypeError(f"Unsupported dataset type: {type(dataset).__name__}")
+
+
+def test_train_uses_explicit_processed_split_files(tmp_path: Path, synthetic_tracknet_domain_raw_root: Path) -> None:
+    processed = tmp_path / "processed"
+    preprocess_dataset(
+        PreprocessConfig(
+            raw_root=synthetic_tracknet_domain_raw_root,
+            output_root=processed,
+            target_width=32,
+            target_height=32,
+            overwrite=True,
+            adapter="tracknet_domain",
+            val_fraction=0.5,
+        )
+    )
     cfg = {
         "model": {"version": "v2", "sequence_length": 3, "base_channels": 4},
-        "dataset": {"processed_root": str(synthetic_processed_root), "sequence_length": 3},
+        "dataset": {
+            "processed_root": str(processed),
+            "sequence_length": 3,
+            "train_split_file": str(processed / "splits" / "train.txt"),
+            "val_split_file": str(processed / "splits" / "val.txt"),
+        },
+        "train": {
+            "experiment_name": "explicit_split",
+            "output_root": str(tmp_path / "outputs"),
+            "epochs": 1,
+            "batch_size": 2,
+            "workers": 0,
+            "optimizer": "Adam",
+            "lr": 1e-3,
+            "loss": "wbce",
+            "device": "cpu",
+            "seed": 7,
+        },
+    }
+
+    train_ds, val_ds = TrackNetTrainer(cfg)._make_dataset()
+
+    assert _dataset_sequence_ids(train_ds) == set((processed / "splits" / "train.txt").read_text().split())
+    assert _dataset_sequence_ids(val_ds) == set((processed / "splits" / "val.txt").read_text().split())
+
+
+def test_train_requires_explicit_split_files(tmp_path: Path, synthetic_processed_two_sequences_root: Path) -> None:
+    cfg = {
+        "model": {"version": "v2", "sequence_length": 3, "base_channels": 4},
+        "dataset": {"processed_root": str(synthetic_processed_two_sequences_root), "sequence_length": 3},
+        "train": {
+            "experiment_name": "split_required",
+            "output_root": str(tmp_path / "outputs"),
+            "epochs": 1,
+            "batch_size": 2,
+            "workers": 0,
+            "optimizer": "Adam",
+            "lr": 1e-3,
+            "loss": "wbce",
+            "device": "cpu",
+            "seed": 7,
+        },
+    }
+
+    try:
+        TrackNetTrainer(cfg)._make_dataset()
+    except ValueError as exc:
+        assert "train_split_file" in str(exc)
+        assert "val_split_file" in str(exc)
+        return
+
+    raise AssertionError("training must require explicit train/validation split files")
+
+
+def test_train_writes_tensorboard_scalars_when_enabled(tmp_path: Path, synthetic_processed_two_sequences_root: Path) -> None:
+    train_file, val_file = _write_split_files(synthetic_processed_two_sequences_root, ["match1__rally1"], ["match1__rally2"])
+    cfg = {
+        "model": {"version": "v2", "sequence_length": 3, "base_channels": 4},
+        "dataset": {
+            "processed_root": str(synthetic_processed_two_sequences_root),
+            "sequence_length": 3,
+            "train_split_file": str(train_file),
+            "val_split_file": str(val_file),
+        },
+        "train": {
+            "experiment_name": "tensorboard_smoke",
+            "output_root": str(tmp_path / "outputs"),
+            "epochs": 1,
+            "batch_size": 2,
+            "workers": 0,
+            "optimizer": "Adam",
+            "lr": 1e-3,
+            "loss": "wbce",
+            "device": "cpu",
+            "seed": 7,
+            "tensorboard": True,
+        },
+    }
+
+    result = TrackNetTrainer(cfg).fit()
+
+    assert list((result.output_dir / "tensorboard").glob("events.out.tfevents.*"))
+
+
+def test_train_amp_setting_is_recorded_in_checkpoint(tmp_path: Path, synthetic_processed_two_sequences_root: Path) -> None:
+    train_file, val_file = _write_split_files(synthetic_processed_two_sequences_root, ["match1__rally1"], ["match1__rally2"])
+    cfg = {
+        "model": {"version": "v2", "sequence_length": 3, "base_channels": 4},
+        "dataset": {
+            "processed_root": str(synthetic_processed_two_sequences_root),
+            "sequence_length": 3,
+            "train_split_file": str(train_file),
+            "val_split_file": str(val_file),
+        },
         "train": {
             "experiment_name": "amp_smoke",
             "output_root": str(tmp_path / "outputs"),
             "epochs": 1,
             "batch_size": 2,
             "workers": 0,
-            "val_split": 0.34,
             "optimizer": "Adam",
             "lr": 1e-3,
             "loss": "wbce",

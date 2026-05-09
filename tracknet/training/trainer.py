@@ -3,15 +3,16 @@
 from __future__ import annotations
 
 import os
-import platform
+import random
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import torch
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
-from torch.utils.data import DataLoader, DistributedSampler, Subset
+from torch.utils.data import DataLoader, DistributedSampler
 from tqdm import tqdm
 
 from tracknet.papers import get_paper_spec, paper_id_from_model_config
@@ -19,6 +20,7 @@ from tracknet.papers.base import PaperSpec
 from tracknet.training.checkpoint import CheckpointState, load_checkpoint, load_model_weights, save_checkpoint, save_model_only
 from tracknet.training.losses import build_loss
 from tracknet.utils.device import select_device
+from tracknet.utils.hardware import collect_hardware_report
 from tracknet.utils.io import ensure_dir, write_json
 from tracknet.utils.seeding import seed_everything
 
@@ -48,6 +50,13 @@ def _collate_train(samples: list[dict[str, Any]]) -> dict[str, Any]:
         "input": torch.stack([s["input"] for s in samples], dim=0),
         "target": torch.stack([s["target"] for s in samples], dim=0),
     }
+
+
+def _seed_worker(worker_id: int) -> None:
+    worker_seed = torch.initial_seed() % 2**32
+    random.seed(worker_seed + worker_id)
+    np.random.seed(worker_seed + worker_id)
+
 
 @dataclass
 class TrainResult:
@@ -89,6 +98,8 @@ class TrackNetTrainer:
         self.scaler = torch.amp.GradScaler("cuda", enabled=self.amp_enabled)
         self.split_metadata: dict[str, Any] = {}
         self.paper_spec = self._resolve_paper_spec()
+        self.tensorboard_enabled = bool(self.train_cfg.get("tensorboard", False))
+        self.tensorboard_writer: Any | None = None
 
     def _resolve_paper_spec(self) -> PaperSpec:
         model_cfg = self.cfg.get("model", {})
@@ -97,123 +108,100 @@ class TrackNetTrainer:
     def _resolve_output_dir(self) -> Path:
         resume = self.train_cfg.get("resume")
         if resume:
-            return Path(resume)
-        out_root = Path(self.train_cfg.get("output_root", "outputs"))
-        name = str(self.train_cfg.get("experiment_name", "tracknet"))
-        from datetime import datetime
+            output_dir = Path(resume)
+        else:
+            out_root = Path(self.train_cfg.get("output_root", "outputs"))
+            name = str(self.train_cfg.get("experiment_name", "tracknet"))
+            from datetime import datetime
 
-        return out_root / f"{name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-
-    def _split_indices_by_sequence(self, dataset: Any, val_split: float) -> tuple[list[int], list[int]]:
-        """Split windows by sequence id to avoid validation leakage.
-
-        Consecutive windows from the same rally are almost identical. A random
-        window-level split makes validation see near-duplicates of training
-        samples and gives a misleading score. The split unit is therefore the
-        semantic sequence when the dataset exposes `windows` and `sequences`.
-        """
-        if not hasattr(dataset, "windows") or not hasattr(dataset, "sequences"):
-            raise TypeError("Sequence-safe splitting requires a dataset with 'windows' and 'sequences' attributes")
-        sequence_ids = [str(seq.sequence_id) for seq in dataset.sequences]
-        if len(sequence_ids) == 1:
-            return self._split_single_sequence_windows(dataset, val_split, sequence_ids[0])
-        generator = torch.Generator().manual_seed(int(self.train_cfg.get("seed", 26)))
-        order = torch.randperm(len(sequence_ids), generator=generator).tolist()
-        val_count = max(1, int(round(len(sequence_ids) * val_split)))
-        if val_count >= len(sequence_ids):
-            val_count = len(sequence_ids) - 1
-        val_sequence_indices = set(order[:val_count])
-        train_indices: list[int] = []
-        val_indices: list[int] = []
-        for window_idx, window in enumerate(dataset.windows):
-            target = val_indices if int(window.sequence_index) in val_sequence_indices else train_indices
-            target.append(window_idx)
-        self.split_metadata = {
-            "strategy": "sequence",
-            "train_sequences": sorted(sequence_ids[i] for i in set(range(len(sequence_ids))) - val_sequence_indices),
-            "val_sequences": sorted(sequence_ids[i] for i in val_sequence_indices),
-        }
-        return train_indices, val_indices
-
-    def _split_indices_by_trajectory_sequence(self, dataset: Any, val_split: float) -> tuple[list[int], list[int]]:
-        if not hasattr(dataset, "windows") or not hasattr(dataset, "sequences"):
-            raise TypeError("Trajectory sequence-safe splitting requires 'windows' and 'sequences' attributes")
-        sequence_ids = [str(item[0]) for item in dataset.sequences]
-        if len(sequence_ids) == 1:
-            return self._split_single_sequence_windows(dataset, val_split, sequence_ids[0])
-        generator = torch.Generator().manual_seed(int(self.train_cfg.get("seed", 26)))
-        order = torch.randperm(len(sequence_ids), generator=generator).tolist()
-        val_count = max(1, int(round(len(sequence_ids) * val_split)))
-        if val_count >= len(sequence_ids):
-            val_count = len(sequence_ids) - 1
-        val_sequence_indices = set(order[:val_count])
-        train_indices: list[int] = []
-        val_indices: list[int] = []
-        for window_idx, (sequence_idx, _) in enumerate(dataset.windows):
-            target = val_indices if int(sequence_idx) in val_sequence_indices else train_indices
-            target.append(window_idx)
-        self.split_metadata = {
-            "strategy": "sequence",
-            "train_sequences": sorted(sequence_ids[i] for i in set(range(len(sequence_ids))) - val_sequence_indices),
-            "val_sequences": sorted(sequence_ids[i] for i in val_sequence_indices),
-        }
-        return train_indices, val_indices
-
-    def _split_single_sequence_windows(self, dataset: Any, val_split: float, sequence_id: str) -> tuple[list[int], list[int]]:
-        """Fallback for tiny smoke datasets that contain only one sequence.
-
-        Real experiments should use at least two rallies and therefore use the
-        sequence-level split above. For synthetic smoke tests we still need a
-        deterministic train/validation split; a contiguous split is less leaky
-        than random interleaving and keeps the limitation visible in metadata.
-        """
-        n = len(dataset)
-        val_size = max(1, int(round(n * val_split)))
-        if val_size >= n:
-            val_size = n - 1
-        train_indices = list(range(0, n - val_size))
-        val_indices = list(range(n - val_size, n))
-        self.split_metadata = {
-            "strategy": "single_sequence_contiguous_window",
-            "warning": "Only one sequence is available; use multiple sequences for leakage-safe validation.",
-            "train_sequences": [sequence_id],
-            "val_sequences": [sequence_id],
-        }
-        return train_indices, val_indices
+            output_dir = out_root / f"{name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        if self.distributed:
+            shared = [str(output_dir) if self.is_main else ""]
+            dist.broadcast_object_list(shared, src=0)
+            output_dir = Path(shared[0])
+        return output_dir
 
     def _make_dataset(self) -> tuple[Any, Any]:
         dataset_section = self.cfg["dataset"]
-        dataset = self.paper_spec.build_training_dataset(dataset_section)
-        val_split = float(self.train_cfg.get("val_split", 0.2))
-        if not 0.0 < val_split < 1.0:
-            raise ValueError("train.val_split must be between 0 and 1")
-        val_size = max(1, int(round(len(dataset) * val_split)))
-        train_size = len(dataset) - val_size
-        if train_size <= 0:
-            raise ValueError("Dataset is too small for the requested validation split")
-        if self.paper_spec.split_strategy == "trajectory_sequence":
-            train_indices, val_indices = self._split_indices_by_trajectory_sequence(dataset, val_split)
-        elif self.paper_spec.split_strategy == "sequence":
-            train_indices, val_indices = self._split_indices_by_sequence(dataset, val_split)
-        else:
-            raise ValueError(f"Unsupported split strategy: {self.paper_spec.split_strategy}")
-        if not train_indices or not val_indices:
-            raise ValueError("Sequence-safe split produced an empty train or validation set")
-        return Subset(dataset, train_indices), Subset(dataset, val_indices)
+        train_split_file = dataset_section.get("train_split_file")
+        val_split_file = dataset_section.get("val_split_file")
+        if bool(train_split_file) != bool(val_split_file):
+            raise ValueError("Training requires both dataset.train_split_file and dataset.val_split_file")
+        if train_split_file and val_split_file:
+            train_cfg = dict(dataset_section)
+            val_cfg = dict(dataset_section)
+            train_cfg["split_file"] = train_split_file
+            val_cfg["split_file"] = val_split_file
+            train_ds = self.paper_spec.build_training_dataset(train_cfg)
+            val_ds = self.paper_spec.build_training_dataset(val_cfg)
+            train_ids = self._dataset_sequence_ids(train_ds)
+            val_ids = self._dataset_sequence_ids(val_ds)
+            if not train_ids or not val_ids:
+                raise ValueError("Explicit train/validation split files produced an empty dataset")
+            if set(train_ids) & set(val_ids):
+                raise ValueError("Explicit train/validation split files must be disjoint")
+            self.split_metadata = {
+                "strategy": "explicit_split_files",
+                "train_split_file": str(train_split_file),
+                "val_split_file": str(val_split_file),
+                "train_sequences": sorted(train_ids),
+                "val_sequences": sorted(val_ids),
+            }
+            return train_ds, val_ds
+        raise ValueError(
+            "Training requires explicit dataset.train_split_file and dataset.val_split_file. "
+            "Run preprocessing first or provide deterministic split files."
+        )
+
+    def _dataset_sequence_ids(self, dataset: Any) -> list[str]:
+        if hasattr(dataset, "sequences"):
+            values: list[str] = []
+            for item in dataset.sequences:
+                if hasattr(item, "sequence_id"):
+                    values.append(str(item.sequence_id))
+                elif isinstance(item, tuple) and item:
+                    values.append(str(item[0]))
+            return values
+        return []
+
+    def _loader_generator(self, train: bool) -> torch.Generator:
+        generator = torch.Generator()
+        offset = 0 if train else 10_000_000
+        generator.manual_seed(int(self.train_cfg.get("seed", 26)) + offset + self.rank)
+        return generator
+
+    def _loader_metadata(self) -> dict[str, Any]:
+        workers = int(self.train_cfg.get("workers", 4))
+        return {
+            "batch_size": int(self.train_cfg.get("batch_size", 2)),
+            "workers": workers,
+            "pin_memory": self.device.type == "cuda",
+            "persistent_workers": bool(self.train_cfg.get("persistent_workers", workers > 0)),
+            "prefetch_factor": int(self.train_cfg.get("prefetch_factor", 2)) if workers > 0 else None,
+            "drop_last": bool(self.train_cfg.get("drop_last", False)),
+        }
 
     def _make_loader(self, dataset: Any, train: bool) -> DataLoader:
         batch_size = int(self.train_cfg.get("batch_size", 2))
         workers = int(self.train_cfg.get("workers", 4))
         sampler = DistributedSampler(dataset, shuffle=train) if self.distributed else None
+        kwargs: dict[str, Any] = {
+            "batch_size": batch_size,
+            "shuffle": train and sampler is None,
+            "sampler": sampler,
+            "num_workers": workers,
+            "pin_memory": self.device.type == "cuda",
+            "drop_last": train and bool(self.train_cfg.get("drop_last", False)),
+            "collate_fn": _collate_train,
+            "generator": self._loader_generator(train),
+            "worker_init_fn": _seed_worker,
+        }
+        if workers > 0:
+            kwargs["persistent_workers"] = bool(self.train_cfg.get("persistent_workers", True))
+            kwargs["prefetch_factor"] = int(self.train_cfg.get("prefetch_factor", 2))
         return DataLoader(
             dataset,
-            batch_size=batch_size,
-            shuffle=(train and sampler is None),
-            sampler=sampler,
-            num_workers=workers,
-            pin_memory=self.device.type == "cuda",
-            drop_last=train and bool(self.train_cfg.get("drop_last", False)),
-            collate_fn=_collate_train,
+            **kwargs,
         )
 
     def _make_optimizer(self, model: torch.nn.Module) -> torch.optim.Optimizer:
@@ -249,6 +237,15 @@ class TrackNetTrainer:
                 gamma=float(self.train_cfg.get("gamma", 0.1)),
             )
         raise ValueError(f"Unknown scheduler: {name}")
+
+    def _make_tensorboard_writer(self) -> Any | None:
+        if not self.tensorboard_enabled or not self.is_main:
+            return None
+        try:
+            from torch.utils.tensorboard import SummaryWriter
+        except ModuleNotFoundError as exc:
+            raise RuntimeError("TensorBoard logging requires the 'tensorboard' package. Install project requirements before enabling train.tensorboard.") from exc
+        return SummaryWriter(log_dir=str(self.output_dir / "tensorboard"))
 
     def _restore_if_needed(self, model: torch.nn.Module, optimizer: torch.optim.Optimizer, scheduler: Any | None) -> None:
         resume = self.train_cfg.get("resume_checkpoint") or (self.output_dir / "checkpoints" / "last.pt" if self.train_cfg.get("resume") else None)
@@ -291,14 +288,15 @@ class TrackNetTrainer:
                 self.scaler.step(optimizer)
                 self.scaler.update()
                 self.global_step += 1
-            total += float(loss.detach().cpu())
-            count += 1
+            batch_size = int(batch["input"].shape[0])
+            total += float(loss.detach().cpu()) * batch_size
+            count += batch_size
             pbar.set_postfix(loss=f"{total / max(1, count):.5f}")
         avg = total / max(1, count)
         if self.distributed:
-            t = torch.tensor([avg], dtype=torch.float32, device=self.device)
-            dist.all_reduce(t, op=dist.ReduceOp.AVG)
-            avg = float(t.item())
+            t = torch.tensor([total, float(count)], dtype=torch.float32, device=self.device)
+            dist.all_reduce(t, op=dist.ReduceOp.SUM)
+            avg = float((t[0] / torch.clamp(t[1], min=1.0)).item())
         return avg
 
     def fit(self) -> TrainResult:
@@ -312,38 +310,51 @@ class TrackNetTrainer:
         criterion = build_loss(str(self.train_cfg.get("loss", default_loss))).to(self.device)
         optimizer = self._make_optimizer(model)
         scheduler = self._make_scheduler(optimizer)
+        self.tensorboard_writer = self._make_tensorboard_writer()
         self._restore_if_needed(model, optimizer, scheduler)
         epochs = int(self.train_cfg.get("epochs", 30))
-        for epoch in range(self.start_epoch, epochs):
-            if self.distributed and isinstance(train_loader.sampler, DistributedSampler):
-                train_loader.sampler.set_epoch(epoch)
-            train_loss = self._run_epoch(model, criterion, train_loader, optimizer, epoch)
-            with torch.no_grad():
-                val_loss = self._run_epoch(model, criterion, val_loader, None, epoch)
-            if scheduler is not None:
-                if isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
-                    scheduler.step(val_loss)
-                else:
-                    scheduler.step()
-            if self.is_main:
-                metrics = {"train_loss": train_loss, "val_loss": val_loss}
-                training_meta = {
-                    "amp_requested": self.amp_requested,
-                    "amp_enabled": self.amp_enabled,
-                    "device": str(self.device),
-                    "world_size": self.world_size,
-                    "python": platform.python_version(),
-                    "torch": torch.__version__,
-                    "split": self.split_metadata,
-                }
-                state = CheckpointState(epoch=epoch, global_step=self.global_step, best_score=min(self.best_loss, val_loss), metrics=metrics, training=training_meta)
-                save_checkpoint(self.output_dir / "checkpoints" / "last.pt", model, optimizer, scheduler, state, self.cfg, scaler=self.scaler)
-                if val_loss < self.best_loss:
-                    self.best_loss = val_loss
-                    state.best_score = self.best_loss
-                    save_checkpoint(self.output_dir / "checkpoints" / "best.pt", model, optimizer, scheduler, state, self.cfg, scaler=self.scaler)
-                    save_model_only(self.output_dir / "checkpoints" / "model_best.pt", model, self.cfg, metrics)
-                write_json(self.output_dir / "metrics.last.json", metrics)
-            if self.distributed:
-                dist.barrier()
+        try:
+            for epoch in range(self.start_epoch, epochs):
+                if self.distributed and isinstance(train_loader.sampler, DistributedSampler):
+                    train_loader.sampler.set_epoch(epoch)
+                train_loss = self._run_epoch(model, criterion, train_loader, optimizer, epoch)
+                with torch.no_grad():
+                    val_loss = self._run_epoch(model, criterion, val_loader, None, epoch)
+                if scheduler is not None:
+                    if isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+                        scheduler.step(val_loss)
+                    else:
+                        scheduler.step()
+                if self.is_main:
+                    metrics = {"train_loss": train_loss, "val_loss": val_loss}
+                    if self.tensorboard_writer is not None:
+                        lr = float(optimizer.param_groups[0].get("lr", 0.0))
+                        self.tensorboard_writer.add_scalar("loss/train", train_loss, epoch)
+                        self.tensorboard_writer.add_scalar("loss/val", val_loss, epoch)
+                        self.tensorboard_writer.add_scalar("optim/lr", lr, epoch)
+                        self.tensorboard_writer.add_scalar("train/global_step", self.global_step, epoch)
+                        self.tensorboard_writer.flush()
+                    training_meta = {
+                        "amp_requested": self.amp_requested,
+                        "amp_enabled": self.amp_enabled,
+                        "device": str(self.device),
+                        "world_size": self.world_size,
+                        "hardware": collect_hardware_report(),
+                        "loader": self._loader_metadata(),
+                        "tensorboard_enabled": self.tensorboard_writer is not None,
+                        "split": self.split_metadata,
+                    }
+                    state = CheckpointState(epoch=epoch, global_step=self.global_step, best_score=min(self.best_loss, val_loss), metrics=metrics, training=training_meta)
+                    save_checkpoint(self.output_dir / "checkpoints" / "last.pt", model, optimizer, scheduler, state, self.cfg, scaler=self.scaler)
+                    if val_loss < self.best_loss:
+                        self.best_loss = val_loss
+                        state.best_score = self.best_loss
+                        save_checkpoint(self.output_dir / "checkpoints" / "best.pt", model, optimizer, scheduler, state, self.cfg, scaler=self.scaler)
+                        save_model_only(self.output_dir / "checkpoints" / "model_best.pt", model, self.cfg, metrics)
+                    write_json(self.output_dir / "metrics.last.json", metrics)
+                if self.distributed:
+                    dist.barrier()
+        finally:
+            if self.tensorboard_writer is not None:
+                self.tensorboard_writer.close()
         return TrainResult(self.output_dir, self.best_loss, epochs - 1)

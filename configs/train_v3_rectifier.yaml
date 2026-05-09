@@ -4,11 +4,13 @@ model:
 
 dataset:
   type: trajectory
-  processed_root: data/processed/tracknet_512x288
+  processed_root: data/processed/tracknet_dataset_512x288
   trajectory_length: 16
   frame_stride: 1
   mask_ratio: 0.3
   delta_y_pixels: 30.0
+  train_split_file: data/processed/tracknet_dataset_512x288/splits/train.txt
+  val_split_file: data/processed/tracknet_dataset_512x288/splits/val.txt
   seed: 26
 
 train:
@@ -17,10 +19,12 @@ train:
   epochs: 30
   batch_size: 32
   workers: 4
-  val_split: 0.2
+  persistent_workers: true
+  prefetch_factor: 2
   optimizer: Adam
   lr: 0.001
   loss: trajectory_mse
   device: auto
   amp: true
+  tensorboard: true
   seed: 26

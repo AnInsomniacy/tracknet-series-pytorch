@@ -37,6 +37,37 @@ def synthetic_raw_root(tmp_path: Path) -> Path:
     return raw
 
 
+def _write_synthetic_sequence(root: Path, sequence_name: str, *, offset: int = 0, frames: int = 8) -> None:
+    video_dir = root / "video"
+    csv_dir = root / "csv"
+    video_dir.mkdir(parents=True, exist_ok=True)
+    csv_dir.mkdir(parents=True, exist_ok=True)
+    video_path = video_dir / f"{sequence_name}.mp4"
+    width, height = 32, 24
+    writer = cv2.VideoWriter(str(video_path), cv2.VideoWriter_fourcc(*"mp4v"), 10.0, (width, height))
+    assert writer.isOpened()
+    rows = []
+    for frame_idx in range(frames):
+        frame = np.zeros((height, width, 3), dtype=np.uint8)
+        x = 4 + frame_idx * 2 + offset
+        y = 6 + frame_idx
+        cv2.circle(frame, (x, y), 2, (255, 255, 255), -1)
+        writer.write(frame)
+        rows.append({"Frame": frame_idx, "Visibility": 1, "X": x, "Y": y})
+    writer.release()
+    pd.DataFrame(rows).to_csv(csv_dir / f"{sequence_name}_ball.csv", index=False)
+
+
+@pytest.fixture()
+def synthetic_tracknet_domain_raw_root(tmp_path: Path) -> Path:
+    raw = tmp_path / "tracknet_dataset"
+    _write_synthetic_sequence(raw / "Professional" / "match1", "rally1", offset=0)
+    _write_synthetic_sequence(raw / "Professional" / "match2", "rally2", offset=1)
+    _write_synthetic_sequence(raw / "Amateur" / "match1", "rally3", offset=2)
+    _write_synthetic_sequence(raw / "Test" / "match1", "rally4", offset=3)
+    return raw
+
+
 @pytest.fixture()
 def synthetic_processed_root(tmp_path: Path, synthetic_raw_root: Path) -> Path:
     processed = tmp_path / "processed"

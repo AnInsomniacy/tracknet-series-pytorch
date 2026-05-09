@@ -9,6 +9,7 @@ paper-specific target semantics without rebuilding raw data for every loss.
 from __future__ import annotations
 
 from collections import defaultdict
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -30,7 +31,8 @@ from tracknet.constants import (
     RAW_X_COL,
     RAW_Y_COL,
 )
-from tracknet.data.raw_reader import RawSequence, discover_raw_sequences, load_raw_annotations
+from tracknet.data.adapters import discover_raw_sequences_with_adapter, sequence_domain
+from tracknet.data.raw_reader import RawSequence, load_raw_annotations
 from tracknet.data.transforms import letterbox_image
 from tracknet.utils.io import ensure_dir, write_json
 
@@ -46,6 +48,9 @@ class PreprocessConfig:
     write_frames: bool = True
     missing_annotation_policy: str = "invisible"  # invisible|skip
     background_sample_stride: int = 1
+    adapter: str = "legacy"
+    val_fraction: float = 0.2
+    workers: int = 1
 
     @classmethod
     def from_mapping(cls, cfg: dict[str, Any]) -> "PreprocessConfig":
@@ -59,12 +64,19 @@ class PreprocessConfig:
             write_frames=bool(cfg.get("write_frames", True)),
             missing_annotation_policy=str(cfg.get("missing_annotation_policy", "invisible")),
             background_sample_stride=max(1, int(cfg.get("background_sample_stride", 1))),
+            adapter=str(cfg.get("adapter", "legacy")),
+            val_fraction=float(cfg.get("val_fraction", 0.2)),
+            workers=max(1, int(cfg.get("workers", 1))),
         )
 
 
 def _sequence_id(match_name: str, sequence_name: str) -> str:
     safe = f"{match_name}__{sequence_name}".replace("/", "_").replace("\\", "_")
     return safe
+
+
+def _public_match_name(match_name: str) -> str:
+    return match_name.split("__", 1)[1] if "__" in match_name else match_name
 
 
 def _annotation_lookup(df: pd.DataFrame) -> dict[int, pd.Series]:
@@ -158,6 +170,9 @@ def process_raw_sequence(seq: RawSequence, cfg: PreprocessConfig, sequence_root:
     meta = {
         "sequence_id": sequence_root.name,
         "match_name": seq.match_name,
+        "public_match_name": _public_match_name(seq.match_name),
+        "domain": sequence_domain(seq),
+        "background_key": seq.match_name,
         "sequence_name": seq.sequence_name,
         "video_path": str(seq.video_path),
         "annotation_path": str(seq.annotation_path),
@@ -172,6 +187,12 @@ def process_raw_sequence(seq: RawSequence, cfg: PreprocessConfig, sequence_root:
     }
     write_json(sequence_root / "meta.json", meta)
     return meta
+
+
+def _process_sequence_job(args: tuple[RawSequence, PreprocessConfig, str]) -> dict[str, Any]:
+    seq, cfg, sequence_id = args
+    sequence_root = ensure_dir(cfg.output_root / "sequences" / sequence_id)
+    return process_raw_sequence(seq, cfg, sequence_root)
 
 
 def _write_match_backgrounds(output_root: Path, sequence_metas: list[dict[str, Any]]) -> None:
@@ -193,6 +214,42 @@ def _write_match_backgrounds(output_root: Path, sequence_metas: list[dict[str, A
         cv2.imwrite(str(bg_dir / f"{match_name}.png"), cv2.cvtColor(bg, cv2.COLOR_RGB2BGR))
 
 
+def _write_split_file(path: Path, sequence_ids: list[str]) -> None:
+    ensure_dir(path.parent)
+    path.write_text("\n".join(sequence_ids) + ("\n" if sequence_ids else ""), encoding="utf-8")
+
+
+def _write_default_splits(output_root: Path, sequence_metas: list[dict[str, Any]], cfg: PreprocessConfig) -> dict[str, list[str]]:
+    if not 0.0 <= float(cfg.val_fraction) < 1.0:
+        raise ValueError("val_fraction must be in [0, 1)")
+    train_val = [meta for meta in sequence_metas if str(meta.get("domain")) != "Test"]
+    test = [str(meta["sequence_id"]) for meta in sequence_metas if str(meta.get("domain")) == "Test"]
+    by_match: dict[str, list[str]] = defaultdict(list)
+    for meta in train_val:
+        by_match[str(meta["match_name"])].append(str(meta["sequence_id"]))
+    match_keys = sorted(by_match)
+    if len(match_keys) > 1:
+        # Split by stable match order only. This keeps preprocessing fully
+        # reproducible across machines and prevents overlapping rallies from
+        # leaking between train and validation via window-level randomness.
+        val_count = max(1, int(round(len(match_keys) * float(cfg.val_fraction))))
+        val_count = min(val_count, len(match_keys) - 1)
+        val_matches = set(match_keys[:val_count])
+    else:
+        val_matches = set()
+    train_ids: list[str] = []
+    val_ids: list[str] = []
+    for match_key in match_keys:
+        target = val_ids if match_key in val_matches else train_ids
+        target.extend(sorted(by_match[match_key]))
+    if not val_ids and len(train_ids) > 1:
+        val_ids.append(train_ids.pop())
+    splits = {"train": sorted(train_ids), "val": sorted(val_ids), "test": sorted(test)}
+    for split_name, sequence_ids in splits.items():
+        _write_split_file(output_root / "splits" / f"{split_name}.txt", sequence_ids)
+    return splits
+
+
 def preprocess_dataset(cfg: PreprocessConfig) -> dict[str, Any]:
     if cfg.target_width <= 0 or cfg.target_height <= 0:
         raise ValueError("target_width and target_height must be positive")
@@ -203,20 +260,39 @@ def preprocess_dataset(cfg: PreprocessConfig) -> dict[str, Any]:
 
         shutil.rmtree(cfg.output_root)
     ensure_dir(cfg.output_root / "sequences")
-    sequences = discover_raw_sequences(cfg.raw_root)
-    metas: list[dict[str, Any]] = []
-    for seq in tqdm(sequences, desc="Preprocessing raw videos", unit="sequence"):
-        sid = _sequence_id(seq.match_name, seq.sequence_name)
-        sequence_root = ensure_dir(cfg.output_root / "sequences" / sid)
-        metas.append(process_raw_sequence(seq, cfg, sequence_root))
+    sequences = discover_raw_sequences_with_adapter(cfg.raw_root, cfg.adapter)
+    jobs = [(seq, cfg, _sequence_id(seq.match_name, seq.sequence_name)) for seq in sequences]
+    metas_by_id: dict[str, dict[str, Any]] = {}
+    if cfg.workers <= 1:
+        for seq, job_cfg, sid in tqdm(jobs, desc="Preprocessing raw videos", unit="sequence"):
+            metas_by_id[sid] = _process_sequence_job((seq, job_cfg, sid))
+    else:
+        # Process videos concurrently, but keep manifest and split ordering tied
+        # to the adapter's stable sequence order. This preserves deterministic
+        # outputs while allowing CPU-bound decode/resize/write work to scale.
+        with ProcessPoolExecutor(max_workers=cfg.workers) as executor:
+            for sid, meta in zip(
+                [job[2] for job in jobs],
+                tqdm(executor.map(_process_sequence_job, jobs), total=len(jobs), desc="Preprocessing raw videos", unit="sequence"),
+            ):
+                metas_by_id[sid] = meta
+    metas = [metas_by_id[sid] for _, _, sid in jobs]
     _write_match_backgrounds(cfg.output_root, metas)
     manifest = {
         "format_version": 1,
         "raw_root": str(cfg.raw_root),
+        "adapter": cfg.adapter,
         "target_width": cfg.target_width,
         "target_height": cfg.target_height,
         "image_extension": cfg.image_extension,
+        "preprocess": {
+            "workers": cfg.workers,
+            "background_sample_stride": cfg.background_sample_stride,
+            "missing_annotation_policy": cfg.missing_annotation_policy,
+            "write_frames": cfg.write_frames,
+        },
         "sequences": metas,
+        "splits": _write_default_splits(cfg.output_root, metas, cfg),
     }
     write_json(cfg.output_root / "manifest.json", manifest)
     return manifest

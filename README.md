@@ -14,9 +14,29 @@ The project separates the TrackNet workflow into independently runnable and test
 6. Visualize processed samples to inspect heatmaps and coordinate mappings.
 7. Test data handling, shapes, losses, checkpoints, evaluation and inference post-processing with synthetic data and small models.
 
-## Legacy Raw Data Layout
+## Raw Dataset Adapters
 
-The raw reader expects the layout below. Users do not need to reorganize the original raw data.
+Raw data is never edited in place. A dataset adapter reads an external layout and emits neutral sequence records for preprocessing. The default adapter is `tracknet_domain`, which supports the downloaded TrackNet layout:
+
+```text
+dataset/
+  Professional/
+    match1/
+      video/
+        rally1.mp4
+      csv/
+        rally1_ball.csv
+  Amateur/
+    match1/
+      video/
+      csv/
+  Test/
+    match1/
+      video/
+      csv/
+```
+
+The legacy adapter still supports the older layout:
 
 ```text
 raw_root/
@@ -55,9 +75,13 @@ Preprocessing writes a stable project-native format:
 processed_root/
   manifest.json
   backgrounds/
-    match1.png
+    Professional__match1.png
+  splits/
+    train.txt
+    val.txt
+    test.txt
   sequences/
-    match1__rally1/
+    Professional__match1__rally1/
       frames/
         000000.png
         000001.png
@@ -78,6 +102,7 @@ Fields:
 - `x_model/y_model` are coordinates after letterboxing into model resolution.
 - Training, evaluation and inference share the same letterbox transform to avoid resize/coordinate drift.
 - Heatmaps are generated on demand from paper-owned target policies. The processed dataset stores neutral frames and coordinates only.
+- `manifest.json` preserves raw `domain`, `match_name`, `sequence_name`, source paths and background keys. The generated split files keep `Test` isolated for final evaluation and split training/validation by match.
 
 ## Paper-to-Code Mapping
 
@@ -128,8 +153,9 @@ Edit `configs/preprocess.yaml`:
 
 ```yaml
 preprocess:
-  raw_root: data/raw
-  output_root: data/processed/tracknet_512x288
+  raw_root: dataset
+  output_root: data/processed/tracknet_dataset_512x288
+  adapter: tracknet_domain
   target_width: 512
   target_height: 288
 ```
@@ -140,7 +166,9 @@ Run:
 python -m tracknet.tools.preprocess --config configs/preprocess.yaml
 ```
 
-For V1 at 640x360, create a separate preprocess config with `target_width: 640` and `target_height: 360`, then point `configs/train_v1.yaml` at that processed root.
+Preprocessing shows a sequence-level `tqdm` progress bar. It runs with one worker by default for easy debugging and deterministic logs. Set `preprocess.workers` above `1` to process videos in parallel; manifest and split ordering remain stable.
+
+For V1 at 640x360, run the same adapter with `target_width: 640`, `target_height: 360`, and `output_root: data/processed/tracknet_dataset_640x360`; `configs/train_v1.yaml` is already pointed at that processed root and its split files.
 
 ## Training
 
@@ -166,6 +194,7 @@ Output layout:
 outputs/train/<experiment>_<timestamp>/
   config.resolved.json
   metrics.last.json
+  tensorboard/
   checkpoints/
     last.pt          # latest full training state for resume
     best.pt          # full training state with best validation loss
@@ -175,9 +204,25 @@ outputs/train/<experiment>_<timestamp>/
 
 ### Validation Splits and AMP
 
-Training uses sequence-level validation splitting when multiple sequences are available. This prevents overlapping sliding windows from the same rally from appearing in both training and validation. Tiny one-sequence smoke datasets use a contiguous window split and record that limitation in checkpoint metadata.
+Training requires explicit split files generated during preprocessing. The default TrackNet-domain preprocessing writes deterministic `train.txt`, `val.txt`, and `test.txt` files; training configs use the train/validation files, while evaluation uses the test file. Omitted split files are treated as a configuration error so experiments cannot silently fall back to random or window-level validation splits.
 
 Set `train.amp: true` to enable mixed precision on CUDA. The same config is safe on CPU; checkpoints record both `amp_requested` and `amp_enabled` so experiments remain auditable.
+
+Set `train.tensorboard: true` to write TensorBoard scalars under the experiment directory. The trainer logs training loss, validation loss, learning rate and global step.
+
+Inspect local hardware support before choosing a config:
+
+```bash
+python -m tracknet.tools.hardware
+```
+
+On Apple Silicon, `device: auto` selects MPS when PyTorch exposes it. CUDA AMP is disabled on MPS and CPU. For a local macOS smoke run, create a tiny raw dataset, preprocess it, then train the small V2 config:
+
+```bash
+python scripts/make_synthetic_raw.py --output test_results/synthetic_raw
+python -m tracknet.tools.preprocess --config configs/mac_smoke_preprocess.yaml
+python -m tracknet.tools.train --config configs/mac_smoke_train_v2.yaml
+```
 
 ## Resume Training
 
@@ -210,7 +255,7 @@ The training entry point supports PyTorch DDP. Example for 8 GPUs:
 torchrun --standalone --nproc_per_node=8 -m tracknet.tools.train --config configs/train_v2.yaml
 ```
 
-Distributed settings are inferred from `RANK/LOCAL_RANK/WORLD_SIZE`. CPU-only smoke tests can run with ordinary `python -m ...` commands.
+Distributed settings are inferred from `RANK/LOCAL_RANK/WORLD_SIZE`. Rank 0 creates the experiment directory and broadcasts it to all ranks. DataLoader workers use a seeded generator, and checkpoints record loader settings plus the hardware report. CPU-only smoke tests can run with ordinary `python -m ...` commands.
 
 ## Evaluation
 
@@ -308,7 +353,7 @@ Coverage includes:
 - frame-preserving video inference CSV output;
 - streaming video inference contracts;
 - minimal training smoke tests and best/last/model_best checkpoints;
-- sequence-safe validation splitting;
+- deterministic split-file validation;
 - AMP metadata and CPU fallback;
 - frame-level evaluation aggregation.
 

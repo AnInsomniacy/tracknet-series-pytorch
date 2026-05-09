@@ -110,7 +110,8 @@ class ProcessedTrackNetDataset(Dataset[dict[str, Any]]):
             if not ann_path.exists():
                 raise FileNotFoundError(f"Processed annotations missing: {ann_path}")
             ann = pd.read_csv(ann_path).sort_values(PROCESSED_FRAME_COL).reset_index(drop=True)
-            bg_path = self.root / "backgrounds" / f"{meta['match_name']}.png"
+            background_key = str(meta.get("background_key", meta["match_name"]))
+            bg_path = self.root / "backgrounds" / f"{background_key}.png"
             records.append(
                 SequenceRecord(
                     sequence_id=sid,

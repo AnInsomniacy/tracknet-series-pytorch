@@ -1,0 +1,12 @@
+preprocess:
+  raw_root: test_results/synthetic_raw
+  output_root: test_results/mac_smoke_processed
+  adapter: legacy
+  target_width: 128
+  target_height: 72
+  overwrite: true
+  image_extension: .png
+  missing_annotation_policy: invisible
+  background_sample_stride: 1
+  val_fraction: 0.5
+  workers: 1

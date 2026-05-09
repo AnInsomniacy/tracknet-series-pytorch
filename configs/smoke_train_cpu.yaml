@@ -6,6 +6,8 @@ model:
 dataset:
   processed_root: test_results/synthetic_processed
   sequence_length: 3
+  train_split_file: test_results/synthetic_processed/splits/train.txt
+  val_split_file: test_results/synthetic_processed/splits/val.txt
 
 train:
   experiment_name: smoke_cpu
@@ -13,7 +15,7 @@ train:
   epochs: 1
   batch_size: 2
   workers: 0
-  val_split: 0.34
+  persistent_workers: false
   optimizer: Adam
   lr: 0.001
   loss: wbce

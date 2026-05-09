@@ -9,9 +9,11 @@ model:
   stochastic_context_dropout: 0.1
 
 dataset:
-  processed_root: data/processed/tracknet_512x288
+  processed_root: data/processed/tracknet_dataset_512x288
   sequence_length: 3
   frame_stride: 1
+  train_split_file: data/processed/tracknet_dataset_512x288/splits/train.txt
+  val_split_file: data/processed/tracknet_dataset_512x288/splits/val.txt
 
 train:
   experiment_name: tracknet_v5
@@ -19,7 +21,8 @@ train:
   epochs: 30
   batch_size: 2
   workers: 8
-  val_split: 0.2
+  persistent_workers: true
+  prefetch_factor: 2
   optimizer: AdamW
   lr: 0.0001
   weight_decay: 0.0
@@ -29,4 +32,5 @@ train:
   loss: wbce
   device: auto
   amp: true
+  tensorboard: true
   seed: 26
