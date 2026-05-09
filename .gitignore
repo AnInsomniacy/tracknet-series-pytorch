@@ -45,6 +45,7 @@ ENV/
 
 # Runtime data and generated experiment outputs
 /dataset/
+/Shuttlecock-Trajectory-Dataset.zip
 outputs/
 test_results/
 runs/
