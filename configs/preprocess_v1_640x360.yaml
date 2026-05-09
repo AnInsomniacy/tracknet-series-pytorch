@@ -1,0 +1,12 @@
+preprocess:
+  raw_root: dataset
+  output_root: data/processed/tracknet_dataset_640x360
+  adapter: tracknet_domain
+  target_width: 640
+  target_height: 360
+  overwrite: false
+  image_extension: .png
+  missing_annotation_policy: invisible
+  background_sample_stride: 1
+  val_fraction: 0.2
+  workers: 1

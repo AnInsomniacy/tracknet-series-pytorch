@@ -1,4 +1,6 @@
 torch>=2.1
+torchvision>=0.16
+torchaudio>=2.1
 numpy>=1.23
 pandas>=1.5
 opencv-python>=4.8
