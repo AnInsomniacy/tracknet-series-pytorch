@@ -31,4 +31,7 @@ train:
   tensorboard_hparams: true
   tensorboard_histograms: false
   tensorboard_profiler: false
+  log_every_steps: 20
+  tensorboard_flush_secs: 30
+  tensorboard_max_queue: 100
   seed: 26

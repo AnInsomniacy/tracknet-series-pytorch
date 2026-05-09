@@ -264,7 +264,11 @@ class TrackNetTrainer:
             from torch.utils.tensorboard import SummaryWriter
         except ModuleNotFoundError as exc:
             raise RuntimeError("TensorBoard logging requires the 'tensorboard' package. Install project requirements before enabling train.tensorboard.") from exc
-        return SummaryWriter(log_dir=str(self.output_dir / "tensorboard"))
+        return SummaryWriter(
+            log_dir=str(self.output_dir / "tensorboard"),
+            max_queue=int(self.train_cfg.get("tensorboard_max_queue", 100)),
+            flush_secs=int(self.train_cfg.get("tensorboard_flush_secs", 30)),
+        )
 
     def _find_open_port(self, preferred_port: int) -> int:
         for port in range(preferred_port, preferred_port + 100):
@@ -283,7 +287,7 @@ class TrackNetTrainer:
         if not bool(self.train_cfg.get("launch_tensorboard", True)):
             return None
         port = self._find_open_port(int(self.train_cfg.get("tensorboard_port", 6006)))
-        logdir = Path(self.train_cfg.get("tensorboard_logdir", self.output_dir.parent))
+        logdir = Path(self.train_cfg.get("tensorboard_logdir", self.output_dir / "tensorboard"))
         cmd = [
             sys.executable,
             "-m",
@@ -334,6 +338,7 @@ class TrackNetTrainer:
         optimizer: torch.optim.Optimizer | None,
         epoch: int,
         profiler: Any | None = None,
+        tensorboard: TensorBoardRunLogger | None = None,
     ) -> tuple[float, int]:
         train = optimizer is not None
         model.train(train)
@@ -341,9 +346,11 @@ class TrackNetTrainer:
         count = 0
         pbar = tqdm(loader, desc=("train" if train else "val") + f" epoch {epoch+1}", disable=not self.is_main, leave=False)
         for batch in pbar:
+            step_started = time.perf_counter()
             if train:
                 optimizer.zero_grad(set_to_none=True)
             loss = self._step_loss(model, criterion, batch)
+            batch_size = int(batch["input"].shape[0])
             if train:
                 self.scaler.scale(loss).backward()
                 if float(self.train_cfg.get("grad_clip_norm", 0.0)) > 0:
@@ -354,7 +361,14 @@ class TrackNetTrainer:
                 self.global_step += 1
                 if profiler is not None:
                     profiler.step()
-            batch_size = int(batch["input"].shape[0])
+                if tensorboard is not None:
+                    tensorboard.log_train_step(
+                        global_step=self.global_step,
+                        loss=float(loss.detach().cpu()),
+                        lr=float(optimizer.param_groups[0].get("lr", 0.0)),
+                        step_seconds=time.perf_counter() - step_started,
+                        batch_size=batch_size,
+                    )
             total += float(loss.detach().cpu()) * batch_size
             count += batch_size
             pbar.set_postfix(loss=f"{total / max(1, count):.5f}")
@@ -410,7 +424,7 @@ class TrackNetTrainer:
                 if self.distributed and isinstance(train_loader.sampler, DistributedSampler):
                     train_loader.sampler.set_epoch(epoch)
                 epoch_started = time.perf_counter()
-                train_loss, train_samples = self._run_epoch(model, criterion, train_loader, optimizer, epoch, profiler)
+                train_loss, train_samples = self._run_epoch(model, criterion, train_loader, optimizer, epoch, profiler, tensorboard)
                 with torch.no_grad():
                     val_loss, _ = self._run_epoch(model, criterion, val_loader, None, epoch)
                 epoch_seconds = time.perf_counter() - epoch_started

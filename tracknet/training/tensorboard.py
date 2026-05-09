@@ -52,6 +52,8 @@ class TensorBoardRunLogger:
         self.histogram_interval = max(1, int(self.train_cfg.get("tensorboard_histogram_interval", 5)))
         self.image_interval = max(1, int(self.train_cfg.get("tensorboard_image_interval", 1)))
         self.max_images = max(1, int(self.train_cfg.get("tensorboard_max_images", 2)))
+        self.log_every_steps = max(1, int(self.train_cfg.get("log_every_steps", 20)))
+        self._loss_ema: float | None = None
         self._run_start = time.perf_counter()
 
     def log_run_metadata(self) -> None:
@@ -105,6 +107,27 @@ class TensorBoardRunLogger:
         if self.image_enabled and val_sample is not None and epoch % self.image_interval == 0:
             self.log_validation_samples(model, val_sample, epoch)
         self.writer.flush()
+
+    def log_train_step(
+        self,
+        *,
+        global_step: int,
+        loss: float,
+        lr: float,
+        step_seconds: float,
+        batch_size: int,
+    ) -> None:
+        if not self.enabled:
+            return
+        if global_step <= 1 or global_step % self.log_every_steps == 0:
+            assert self.writer is not None
+            ema_alpha = float(self.train_cfg.get("tensorboard_loss_ema_alpha", 0.1))
+            self._loss_ema = loss if self._loss_ema is None else (ema_alpha * loss + (1.0 - ema_alpha) * self._loss_ema)
+            self.writer.add_scalar("loss/train_step", loss, global_step)
+            self.writer.add_scalar("loss/train_ema", self._loss_ema, global_step)
+            self.writer.add_scalar("optim/lr_step", lr, global_step)
+            self.writer.add_scalar("train/step_seconds", step_seconds, global_step)
+            self.writer.add_scalar("train/samples_per_second_step", batch_size / max(step_seconds, 1e-9), global_step)
 
     def log_checkpoint(self, *, epoch: int, global_step: int, metrics: Mapping[str, float], is_best: bool) -> None:
         if not self.enabled:

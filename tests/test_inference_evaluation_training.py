@@ -312,6 +312,44 @@ def test_train_writes_rich_tensorboard_observability(tmp_path: Path, synthetic_p
     assert any(tag.startswith("parameters/") for tag in tags["histograms"])
 
 
+def test_train_writes_tensorboard_step_scalars_at_configured_interval(tmp_path: Path, synthetic_processed_two_sequences_root: Path) -> None:
+    train_file, val_file = _write_split_files(synthetic_processed_two_sequences_root, ["match1__rally1"], ["match1__rally2"])
+    cfg = {
+        "model": {"version": "v2", "sequence_length": 3, "base_channels": 4},
+        "dataset": {
+            "processed_root": str(synthetic_processed_two_sequences_root),
+            "sequence_length": 3,
+            "train_split_file": str(train_file),
+            "val_split_file": str(val_file),
+        },
+        "train": {
+            "experiment_name": "tensorboard_steps",
+            "output_root": str(tmp_path / "outputs"),
+            "epochs": 1,
+            "batch_size": 2,
+            "workers": 0,
+            "optimizer": "Adam",
+            "lr": 1e-3,
+            "loss": "wbce",
+            "device": "cpu",
+            "seed": 7,
+            "tensorboard": True,
+            "launch_tensorboard": False,
+            "log_every_steps": 2,
+            "tensorboard_flush_secs": 30,
+            "tensorboard_max_queue": 100,
+        },
+    }
+
+    result = TrackNetTrainer(cfg).fit()
+    accumulator = EventAccumulator(str(result.output_dir / "tensorboard"))
+    accumulator.Reload()
+    tags = set(accumulator.Tags()["scalars"])
+
+    assert {"loss/train_step", "loss/train_ema", "optim/lr_step", "train/step_seconds", "train/samples_per_second_step"}.issubset(tags)
+    assert [event.step for event in accumulator.Scalars("loss/train_step")] == [1, 2]
+
+
 def test_tensorboard_launch_can_enable_profiler(monkeypatch, tmp_path: Path, synthetic_processed_two_sequences_root: Path) -> None:
     train_file, val_file = _write_split_files(synthetic_processed_two_sequences_root, ["match1__rally1"], ["match1__rally2"])
     launched: dict[str, object] = {}
@@ -444,9 +482,11 @@ def test_train_launches_tensorboard_by_default_when_logging_is_enabled(monkeypat
 
     assert launched["cmd"][:3] == [torch.sys.executable, "-m", "tensorboard.main"]
     assert "--logdir" in launched["cmd"]
-    assert str(result.output_dir.parent) in launched["cmd"]
     assert "--port" in launched["cmd"]
-    assert result.tensorboard_url == "http://localhost:6006"
+    port_index = launched["cmd"].index("--port") + 1
+    assert result.tensorboard_url == f"http://localhost:{launched['cmd'][port_index]}"
+    logdir_index = launched["cmd"].index("--logdir") + 1
+    assert Path(launched["cmd"][logdir_index]) == result.output_dir / "tensorboard"
 
 
 def test_train_can_disable_tensorboard_launch(monkeypatch, tmp_path: Path, synthetic_processed_two_sequences_root: Path) -> None:
