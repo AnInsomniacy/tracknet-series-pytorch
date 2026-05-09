@@ -4,10 +4,10 @@ model:
   base_channels: 4
 
 dataset:
-  processed_root: test_results/synthetic_processed
+  processed_root: test_results/dataset/processed/synthetic
   sequence_length: 3
-  train_split_file: test_results/synthetic_processed/splits/train.txt
-  val_split_file: test_results/synthetic_processed/splits/val.txt
+  train_split_file: test_results/dataset/processed/synthetic/splits/train.txt
+  val_split_file: test_results/dataset/processed/synthetic/splits/val.txt
 
 train:
   experiment_name: smoke_cpu

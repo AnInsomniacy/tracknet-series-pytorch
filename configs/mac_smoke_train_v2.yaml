@@ -5,11 +5,11 @@ model:
   dropout: 0.0
 
 dataset:
-  processed_root: test_results/mac_smoke_processed
+  processed_root: test_results/dataset/processed/mac_smoke
   sequence_length: 3
   frame_stride: 1
-  train_split_file: test_results/mac_smoke_processed/splits/train.txt
-  val_split_file: test_results/mac_smoke_processed/splits/val.txt
+  train_split_file: test_results/dataset/processed/mac_smoke/splits/train.txt
+  val_split_file: test_results/dataset/processed/mac_smoke/splits/val.txt
 
 train:
   experiment_name: mac_smoke_v2

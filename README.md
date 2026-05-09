@@ -153,8 +153,8 @@ Edit `configs/preprocess.yaml`:
 
 ```yaml
 preprocess:
-  raw_root: dataset
-  output_root: data/processed/tracknet_dataset_512x288
+  raw_root: dataset/raw
+  output_root: dataset/processed/tracknet_dataset_512x288
   adapter: tracknet_domain
   target_width: 512
   target_height: 288
@@ -168,7 +168,7 @@ python -m tracknet.tools.preprocess --config configs/preprocess.yaml
 
 Preprocessing shows a sequence-level `tqdm` progress bar. It runs with one worker by default for easy debugging and deterministic logs. Set `preprocess.workers` above `1` to process videos in parallel; manifest and split ordering remain stable.
 
-For V1 at 640x360, run the same adapter with `target_width: 640`, `target_height: 360`, and `output_root: data/processed/tracknet_dataset_640x360`; `configs/train_v1.yaml` is already pointed at that processed root and its split files.
+For V1 at 640x360, run the same adapter with `target_width: 640`, `target_height: 360`, and `output_root: dataset/processed/tracknet_dataset_640x360`; `configs/train_v1.yaml` is already pointed at that processed root and its split files.
 
 ## Training
 
@@ -221,7 +221,7 @@ python -m tracknet.tools.hardware
 On Apple Silicon, `device: auto` selects MPS when PyTorch exposes it. CUDA AMP is disabled on MPS and CPU. For a local macOS smoke run, create a tiny raw dataset, preprocess it, then train the small V2 config:
 
 ```bash
-python scripts/make_synthetic_raw.py --output test_results/synthetic_raw
+python scripts/make_synthetic_raw.py --output test_results/dataset/raw
 python -m tracknet.tools.preprocess --config configs/mac_smoke_preprocess.yaml
 python -m tracknet.tools.train --config configs/mac_smoke_train_v2.yaml
 ```
@@ -362,7 +362,7 @@ Coverage includes:
 A tiny raw dataset can also be generated manually:
 
 ```bash
-python scripts/make_synthetic_raw.py --output test_results/synthetic_raw
+python scripts/make_synthetic_raw.py --output test_results/dataset/raw
 ```
 
 Then point `configs/preprocess.yaml` at that directory for CLI smoke runs.

@@ -19,7 +19,7 @@ import pandas as pd
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--output", type=Path, default=Path("test_results/synthetic_raw"))
+    parser.add_argument("--output", type=Path, default=Path("test_results/dataset/raw"))
     parser.add_argument("--frames", type=int, default=8)
     args = parser.parse_args()
     w, h = 32, 24

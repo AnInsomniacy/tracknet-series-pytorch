@@ -4,6 +4,6 @@ visualize_dataset:
   model:
     version: v2
   dataset:
-    processed_root: data/processed/tracknet_dataset_512x288
+    processed_root: dataset/processed/tracknet_dataset_512x288
     sequence_length: 3
-    split_file: data/processed/tracknet_dataset_512x288/splits/train.txt
+    split_file: dataset/processed/tracknet_dataset_512x288/splits/train.txt

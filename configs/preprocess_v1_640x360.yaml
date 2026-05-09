@@ -1,6 +1,6 @@
 preprocess:
-  raw_root: dataset
-  output_root: data/processed/tracknet_dataset_640x360
+  raw_root: dataset/raw
+  output_root: dataset/processed/tracknet_dataset_640x360
   adapter: tracknet_domain
   target_width: 640
   target_height: 360

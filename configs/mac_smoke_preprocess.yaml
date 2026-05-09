@@ -1,6 +1,6 @@
 preprocess:
-  raw_root: test_results/synthetic_raw
-  output_root: test_results/mac_smoke_processed
+  raw_root: test_results/dataset/raw
+  output_root: test_results/dataset/processed/mac_smoke
   adapter: legacy
   target_width: 128
   target_height: 72

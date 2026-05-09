@@ -44,8 +44,7 @@ ENV/
 .LSOverride
 
 # Runtime data and generated experiment outputs
-dataset/
-data/
+/dataset/
 outputs/
 test_results/
 runs/

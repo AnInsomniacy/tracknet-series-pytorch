@@ -7,6 +7,6 @@ evaluation:
   threshold: 0.5
   tolerance_pixels: 4.0
   dataset:
-    processed_root: data/processed/tracknet_dataset_512x288
+    processed_root: dataset/processed/tracknet_dataset_512x288
     sequence_length: 3
-    split_file: data/processed/tracknet_dataset_512x288/splits/test.txt
+    split_file: dataset/processed/tracknet_dataset_512x288/splits/test.txt
