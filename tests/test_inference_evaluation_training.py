@@ -6,6 +6,7 @@ import cv2
 import numpy as np
 import pandas as pd
 import torch
+from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 
 from tracknet.data.preprocessing import PreprocessConfig, preprocess_dataset
 from tracknet.data.trajectory_dataset import TrajectoryRectifierDataset, TrajectoryRectifierDatasetConfig
@@ -15,6 +16,7 @@ from tracknet.inference.postprocess import Prediction, decode_heatmap
 from tracknet.inference.rectification import build_v3_inpainting_mask
 from tracknet.models import build_model
 from tracknet.training.checkpoint import CheckpointState, load_checkpoint, save_checkpoint
+import tracknet.training.trainer as trainer_module
 from tracknet.training.trainer import TrackNetTrainer
 
 
@@ -266,6 +268,221 @@ def test_train_writes_tensorboard_scalars_when_enabled(tmp_path: Path, synthetic
     result = TrackNetTrainer(cfg).fit()
 
     assert list((result.output_dir / "tensorboard").glob("events.out.tfevents.*"))
+
+
+def test_train_writes_rich_tensorboard_observability(tmp_path: Path, synthetic_processed_two_sequences_root: Path) -> None:
+    train_file, val_file = _write_split_files(synthetic_processed_two_sequences_root, ["match1__rally1"], ["match1__rally2"])
+    cfg = {
+        "model": {"version": "v2", "sequence_length": 3, "base_channels": 4},
+        "dataset": {
+            "processed_root": str(synthetic_processed_two_sequences_root),
+            "sequence_length": 3,
+            "train_split_file": str(train_file),
+            "val_split_file": str(val_file),
+        },
+        "train": {
+            "experiment_name": "tensorboard_rich",
+            "output_root": str(tmp_path / "outputs"),
+            "epochs": 1,
+            "batch_size": 2,
+            "workers": 0,
+            "optimizer": "Adam",
+            "lr": 1e-3,
+            "loss": "wbce",
+            "device": "cpu",
+            "seed": 7,
+            "tensorboard": True,
+            "launch_tensorboard": False,
+            "tensorboard_images": True,
+            "tensorboard_histograms": True,
+            "tensorboard_hparams": True,
+            "tensorboard_model_graph": False,
+        },
+    }
+
+    result = TrackNetTrainer(cfg).fit()
+    accumulator = EventAccumulator(str(result.output_dir / "tensorboard"))
+    accumulator.Reload()
+    tags = accumulator.Tags()
+
+    assert {"loss/train", "loss/val", "optim/lr", "train/global_step", "train/epoch_seconds", "train/samples_per_second"}.issubset(set(tags["scalars"]))
+    tensor_tags = set(tags["tensors"])
+    assert {"config/resolved/text_summary", "config/hardware/text_summary", "config/splits/text_summary", "checkpoint/latest/text_summary"}.issubset(tensor_tags)
+    assert any(tag.startswith("samples/validation") for tag in tags["images"])
+    assert any(tag.startswith("parameters/") for tag in tags["histograms"])
+
+
+def test_tensorboard_launch_can_enable_profiler(monkeypatch, tmp_path: Path, synthetic_processed_two_sequences_root: Path) -> None:
+    train_file, val_file = _write_split_files(synthetic_processed_two_sequences_root, ["match1__rally1"], ["match1__rally2"])
+    launched: dict[str, object] = {}
+
+    class FakeProcess:
+        pid = 12345
+
+        def poll(self):
+            return None
+
+    def fake_start_tensorboard_process(cmd):  # noqa: ANN001
+        launched["cmd"] = cmd
+        return FakeProcess()
+
+    monkeypatch.setattr(trainer_module, "_start_tensorboard_process", fake_start_tensorboard_process)
+    cfg = {
+        "model": {"version": "v2", "sequence_length": 3, "base_channels": 4},
+        "dataset": {
+            "processed_root": str(synthetic_processed_two_sequences_root),
+            "sequence_length": 3,
+            "train_split_file": str(train_file),
+            "val_split_file": str(val_file),
+        },
+        "train": {
+            "experiment_name": "tensorboard_profiler",
+            "output_root": str(tmp_path / "outputs"),
+            "epochs": 1,
+            "batch_size": 2,
+            "workers": 0,
+            "optimizer": "Adam",
+            "lr": 1e-3,
+            "loss": "wbce",
+            "device": "cpu",
+            "seed": 7,
+            "tensorboard": True,
+            "tensorboard_profile_plugin": True,
+        },
+    }
+
+    TrackNetTrainer(cfg).fit()
+
+    assert "--load_fast=false" in launched["cmd"]
+
+
+def test_tensorboard_profiler_steps_during_training(monkeypatch, tmp_path: Path, synthetic_processed_two_sequences_root: Path) -> None:
+    train_file, val_file = _write_split_files(synthetic_processed_two_sequences_root, ["match1__rally1"], ["match1__rally2"])
+    calls = {"enter": 0, "step": 0, "exit": 0}
+
+    class FakeProfiler:
+        def __enter__(self):
+            calls["enter"] += 1
+            return self
+
+        def step(self):
+            calls["step"] += 1
+
+        def __exit__(self, exc_type, exc, tb):  # noqa: ANN001
+            calls["exit"] += 1
+
+    monkeypatch.setattr("tracknet.training.tensorboard.torch.profiler.profile", lambda **kwargs: FakeProfiler())
+    cfg = {
+        "model": {"version": "v2", "sequence_length": 3, "base_channels": 4},
+        "dataset": {
+            "processed_root": str(synthetic_processed_two_sequences_root),
+            "sequence_length": 3,
+            "train_split_file": str(train_file),
+            "val_split_file": str(val_file),
+        },
+        "train": {
+            "experiment_name": "tensorboard_profiler_steps",
+            "output_root": str(tmp_path / "outputs"),
+            "epochs": 1,
+            "batch_size": 2,
+            "workers": 0,
+            "optimizer": "Adam",
+            "lr": 1e-3,
+            "loss": "wbce",
+            "device": "cpu",
+            "seed": 7,
+            "tensorboard": True,
+            "launch_tensorboard": False,
+            "tensorboard_profiler": True,
+        },
+    }
+
+    TrackNetTrainer(cfg).fit()
+
+    assert calls == {"enter": 1, "step": 3, "exit": 1}
+
+
+def test_train_launches_tensorboard_by_default_when_logging_is_enabled(monkeypatch, tmp_path: Path, synthetic_processed_two_sequences_root: Path) -> None:
+    train_file, val_file = _write_split_files(synthetic_processed_two_sequences_root, ["match1__rally1"], ["match1__rally2"])
+    launched: dict[str, object] = {}
+
+    class FakeProcess:
+        pid = 12345
+
+        def poll(self):
+            return None
+
+    def fake_start_tensorboard_process(cmd):  # noqa: ANN001
+        launched["cmd"] = cmd
+        return FakeProcess()
+
+    monkeypatch.setattr(trainer_module, "_start_tensorboard_process", fake_start_tensorboard_process)
+    cfg = {
+        "model": {"version": "v2", "sequence_length": 3, "base_channels": 4},
+        "dataset": {
+            "processed_root": str(synthetic_processed_two_sequences_root),
+            "sequence_length": 3,
+            "train_split_file": str(train_file),
+            "val_split_file": str(val_file),
+        },
+        "train": {
+            "experiment_name": "tensorboard_launch",
+            "output_root": str(tmp_path / "outputs"),
+            "epochs": 1,
+            "batch_size": 2,
+            "workers": 0,
+            "optimizer": "Adam",
+            "lr": 1e-3,
+            "loss": "wbce",
+            "device": "cpu",
+            "seed": 7,
+            "tensorboard": True,
+        },
+    }
+
+    result = TrackNetTrainer(cfg).fit()
+
+    assert launched["cmd"][:3] == [torch.sys.executable, "-m", "tensorboard.main"]
+    assert "--logdir" in launched["cmd"]
+    assert str(result.output_dir.parent) in launched["cmd"]
+    assert "--port" in launched["cmd"]
+    assert result.tensorboard_url == "http://localhost:6006"
+
+
+def test_train_can_disable_tensorboard_launch(monkeypatch, tmp_path: Path, synthetic_processed_two_sequences_root: Path) -> None:
+    train_file, val_file = _write_split_files(synthetic_processed_two_sequences_root, ["match1__rally1"], ["match1__rally2"])
+
+    def fail_start_tensorboard_process(*args, **kwargs):  # noqa: ANN002, ANN003
+        raise AssertionError("TensorBoard process should not launch")
+
+    monkeypatch.setattr(trainer_module, "_start_tensorboard_process", fail_start_tensorboard_process)
+    cfg = {
+        "model": {"version": "v2", "sequence_length": 3, "base_channels": 4},
+        "dataset": {
+            "processed_root": str(synthetic_processed_two_sequences_root),
+            "sequence_length": 3,
+            "train_split_file": str(train_file),
+            "val_split_file": str(val_file),
+        },
+        "train": {
+            "experiment_name": "tensorboard_no_launch",
+            "output_root": str(tmp_path / "outputs"),
+            "epochs": 1,
+            "batch_size": 2,
+            "workers": 0,
+            "optimizer": "Adam",
+            "lr": 1e-3,
+            "loss": "wbce",
+            "device": "cpu",
+            "seed": 7,
+            "tensorboard": True,
+            "launch_tensorboard": False,
+        },
+    }
+
+    result = TrackNetTrainer(cfg).fit()
+
+    assert result.tensorboard_url is None
 
 
 def test_train_amp_setting_is_recorded_in_checkpoint(tmp_path: Path, synthetic_processed_two_sequences_root: Path) -> None:

@@ -23,6 +23,12 @@ train:
   device: auto
   amp: false
   tensorboard: true
+  launch_tensorboard: true
+  tensorboard_port: 6006
+  tensorboard_images: true
+  tensorboard_hparams: true
+  tensorboard_histograms: false
+  tensorboard_profiler: false
   seed: 7
   num_threads: 1
   interop_threads: 1

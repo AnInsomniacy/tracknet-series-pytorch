@@ -26,4 +26,10 @@ train:
   device: auto
   amp: true
   tensorboard: true
+  launch_tensorboard: true
+  tensorboard_port: 6006
+  tensorboard_images: true
+  tensorboard_hparams: true
+  tensorboard_histograms: false
+  tensorboard_profiler: false
   seed: 26

@@ -208,7 +208,9 @@ Training requires explicit split files generated during preprocessing. The defau
 
 Set `train.amp: true` to enable mixed precision on CUDA. The same config is safe on CPU; checkpoints record both `amp_requested` and `amp_enabled` so experiments remain auditable.
 
-Set `train.tensorboard: true` to write TensorBoard scalars under the experiment directory. The trainer logs training loss, validation loss, learning rate and global step.
+Set `train.tensorboard: true` to write TensorBoard events under the experiment directory. The trainer logs loss, learning rate, global step, epoch time, throughput, resolved config, hardware, split metadata, checkpoint events, hparams and validation previews. Heatmap models write frame/target/prediction/overlay image panels; the V3 rectifier writes trajectory-style previews. Training configs also set `train.launch_tensorboard: true`, so rank 0 starts TensorBoard automatically and prints the local URL, for example `http://localhost:6006`. If the port is busy, the trainer uses the next available port. Set `train.launch_tensorboard: false` for headless jobs that should only write event files.
+
+TensorBoard histograms and profiler traces are intentionally opt-in because they can create large event directories on long runs. Set `train.tensorboard_histograms: true` for low-frequency parameter and gradient histograms. Set `train.tensorboard_profiler: true` and `train.tensorboard_profile_plugin: true` for a short PyTorch profiler trace under the TensorBoard Profile tab.
 
 Inspect local hardware support before choosing a config:
 
