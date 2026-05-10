@@ -18,7 +18,7 @@ dataset:
 train:
   experiment_name: tracknet_v5
   output_root: outputs/train
-  epochs: 30
+  epochs: 50
   batch_size: 2
   workers: 8
   persistent_workers: true

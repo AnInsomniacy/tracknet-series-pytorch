@@ -16,8 +16,8 @@ dataset:
 train:
   experiment_name: tracknet_v3_rectifier
   output_root: outputs/train
-  epochs: 30
-  batch_size: 32
+  epochs: 50
+  batch_size: 2
   workers: 4
   persistent_workers: true
   prefetch_factor: 2
