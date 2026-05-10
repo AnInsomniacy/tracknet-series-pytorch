@@ -24,7 +24,7 @@ train:
   lr: 1.0
   loss: wbce
   device: auto
-  amp: true
+  amp: false
   tensorboard: true
   launch_tensorboard: true
   tensorboard_port: 6006

@@ -344,8 +344,9 @@ class TrackNetTrainer:
         model.train(train)
         total = 0.0
         count = 0
-        pbar = tqdm(loader, desc=("train" if train else "val") + f" epoch {epoch+1}", disable=not self.is_main, leave=False)
-        for batch in pbar:
+        phase = "train" if train else "val"
+        pbar = tqdm(loader, desc=f"{phase} epoch {epoch + 1} loss=--", disable=not self.is_main, leave=False)
+        for step, batch in enumerate(pbar, start=1):
             step_started = time.perf_counter()
             if train:
                 optimizer.zero_grad(set_to_none=True)
@@ -371,7 +372,7 @@ class TrackNetTrainer:
                     )
             total += float(loss.detach().cpu()) * batch_size
             count += batch_size
-            pbar.set_postfix(loss=f"{total / max(1, count):.5f}")
+            pbar.set_description(f"{phase} epoch {epoch + 1} loss={total / max(1, count):.5f}")
         avg = total / max(1, count)
         if self.distributed:
             t = torch.tensor([total, float(count)], dtype=torch.float32, device=self.device)
