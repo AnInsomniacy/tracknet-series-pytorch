@@ -35,7 +35,7 @@ class TrackNetV4(nn.Module):
         if fusion_variant not in {"eq4", "mean"}:
             raise ValueError("fusion_variant must be 'eq4' or 'mean'")
         self.fusion_variant = fusion_variant
-        self.backbone = V2EncoderDecoder(in_ch, out_ch, dropout=dropout, base_channels=base_channels)
+        self.backbone = V2EncoderDecoder(in_ch, None, dropout=dropout, base_channels=base_channels)
         self.motion_prompt = MotionPromptV4()
         fusion_channels = base_channels if fusion_variant == "mean" else base_channels * sequence_length
         self.fusion_output = nn.Conv2d(fusion_channels, out_ch, kernel_size=1)

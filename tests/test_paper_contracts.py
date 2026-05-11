@@ -165,6 +165,16 @@ def test_v4_fuses_motion_before_heatmap_output_layer() -> None:
     assert recorder.last_input.shape[1] == 3 * 4
 
 
+def test_v4_trainable_parameters_all_receive_gradients() -> None:
+    model = TrackNetV4(sequence_length=3, base_channels=4, fusion_variant="eq4")
+    loss = model(torch.rand(2, 9, 32, 32)).sum()
+
+    loss.backward()
+
+    missing = [name for name, param in model.named_parameters() if param.requires_grad and param.grad is None]
+    assert missing == []
+
+
 def test_v1_matches_paper_encoder_decoder_layer_depths() -> None:
     model = TrackNetV1(base_channels=4)
 

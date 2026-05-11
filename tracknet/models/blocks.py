@@ -32,7 +32,7 @@ class V2EncoderDecoder(nn.Module):
     fusion, or residual refinement according to the target paper version.
     """
 
-    def __init__(self, input_channels: int, output_channels: int, dropout: float = 0.0, base_channels: int = 64):
+    def __init__(self, input_channels: int, output_channels: int | None, dropout: float = 0.0, base_channels: int = 64):
         super().__init__()
         c1, c2, c3, c4 = base_channels, base_channels * 2, base_channels * 4, base_channels * 8
         self.enc1 = conv_block(input_channels, c1, 2)
@@ -44,7 +44,7 @@ class V2EncoderDecoder(nn.Module):
         self.dec1 = conv_block(c4 + c3, c3, 3)
         self.dec2 = conv_block(c3 + c2, c2, 2)
         self.dec3 = conv_block(c2 + c1, c1, 2)
-        self.output = nn.Conv2d(c1, output_channels, kernel_size=1)
+        self.output = nn.Conv2d(c1, output_channels, kernel_size=1) if output_channels is not None else None
 
     def forward_features(self, x: torch.Tensor) -> torch.Tensor:
         e1 = self.enc1(x)
@@ -60,6 +60,8 @@ class V2EncoderDecoder(nn.Module):
         return d3
 
     def forward_logits(self, x: torch.Tensor) -> torch.Tensor:
+        if self.output is None:
+            raise RuntimeError("V2EncoderDecoder was constructed without an output head")
         return self.output(self.forward_features(x))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
