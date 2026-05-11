@@ -14,7 +14,7 @@ dataset:
 train:
   experiment_name: tracknet_v2_ddp_max
   output_root: outputs/train
-  epochs: 50
+  epochs: 30
   batch_size: 1
   workers: 4
   persistent_workers: true

@@ -14,8 +14,8 @@ dataset:
 train:
   experiment_name: tracknet_v2
   output_root: outputs/train
-  epochs: 50
-  batch_size: 2
+  epochs: 30
+  batch_size: 1
   workers: 8
   persistent_workers: true
   prefetch_factor: 2
