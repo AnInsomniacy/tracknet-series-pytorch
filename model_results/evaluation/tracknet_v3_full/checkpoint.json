@@ -1,0 +1,11 @@
+{
+  "best_score": null,
+  "checkpoint_path": "pretrained_models/tracknet_v3/tracker/best_epoch_11.pt",
+  "epoch": null,
+  "format_version": 1,
+  "global_step": null,
+  "metrics": {
+    "train_loss": 5.1311399147380143e-05,
+    "val_loss": 8.563941082684323e-05
+  }
+}

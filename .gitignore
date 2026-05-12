@@ -53,6 +53,8 @@ logs/
 wandb/
 tensorboard/
 mlruns/
+pretrained_models/
+trained_model_exports/
 lightning_logs/
 
 # Model checkpoints, exported weights, and accelerator artifacts
@@ -80,3 +82,7 @@ lightning_logs/
 *.feather
 *.sqlite
 *.db
+
+# Versioned training logs and evaluation artifacts
+!model_results/
+!model_results/**

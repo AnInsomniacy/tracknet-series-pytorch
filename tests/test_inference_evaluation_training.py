@@ -11,6 +11,7 @@ from tensorboard.backend.event_processing.event_accumulator import EventAccumula
 from tracknet.data.preprocessing import PreprocessConfig, preprocess_dataset
 from tracknet.data.trajectory_dataset import TrajectoryRectifierDataset, TrajectoryRectifierDatasetConfig
 from tracknet.evaluation import EvaluationConfig, evaluate_checkpoint
+import tracknet.evaluation.evaluator as evaluator_module
 from tracknet.inference import VideoPredictionConfig, run_video_prediction
 from tracknet.inference.postprocess import Prediction, decode_heatmap
 from tracknet.inference.rectification import build_v3_inpainting_mask
@@ -18,6 +19,7 @@ from tracknet.models import build_model
 from tracknet.training.checkpoint import CheckpointState, load_checkpoint, save_checkpoint
 import tracknet.training.trainer as trainer_module
 from tracknet.training.trainer import TrackNetTrainer
+from tracknet.tools.collect_evaluations import write_evaluation_report
 
 
 def _write_split_files(processed_root: Path, train_ids: list[str], val_ids: list[str]) -> tuple[Path, Path]:
@@ -602,3 +604,197 @@ def test_evaluation_counts_each_frame_once(tmp_path: Path, synthetic_processed_r
     predictions = pd.read_csv(result.predictions_csv)
     assert predictions["frame"].is_unique
     assert result.metrics["total"] == len(predictions)
+
+
+def test_evaluation_uses_paper_default_tolerance_when_config_omits_override() -> None:
+    v1_cfg = EvaluationConfig(
+        checkpoint_path=Path("unused.pt"),
+        output_dir=Path("unused"),
+        dataset={"processed_root": "unused"},
+        model={"version": "v1"},
+    )
+    v2_cfg = EvaluationConfig(
+        checkpoint_path=Path("unused.pt"),
+        output_dir=Path("unused"),
+        dataset={"processed_root": "unused"},
+        model={"version": "v2"},
+    )
+
+    assert evaluator_module.resolve_evaluation_protocol(v1_cfg).tolerance_pixels == 5.0
+    assert evaluator_module.resolve_evaluation_protocol(v2_cfg).tolerance_pixels == 4.0
+
+
+def test_evaluation_config_can_override_protocol_tolerance_and_coordinate_space() -> None:
+    cfg = EvaluationConfig(
+        checkpoint_path=Path("unused.pt"),
+        output_dir=Path("unused"),
+        dataset={"processed_root": "unused"},
+        model={"version": "v5"},
+        tolerance_pixels=7.0,
+        coordinate_space="raw",
+    )
+
+    protocol = evaluator_module.resolve_evaluation_protocol(cfg)
+
+    assert protocol.tolerance_pixels == 7.0
+    assert protocol.coordinate_space == "raw"
+
+
+def test_evaluation_writes_auditable_protocol_files(tmp_path: Path, synthetic_processed_root: Path) -> None:
+    model_cfg = {"model": {"version": "v2", "sequence_length": 3, "base_channels": 4}}
+    model = build_model(model_cfg["model"])
+    ckpt_path = tmp_path / "eval_model.pt"
+    save_checkpoint(
+        ckpt_path,
+        model,
+        None,
+        None,
+        CheckpointState(epoch=12, global_step=34, best_score=0.25, metrics={"val_loss": 0.25}),
+        model_cfg,
+    )
+
+    result = evaluate_checkpoint(
+        EvaluationConfig(
+            checkpoint_path=ckpt_path,
+            output_dir=tmp_path / "eval_audit",
+            dataset={"processed_root": str(synthetic_processed_root), "sequence_length": 3},
+            model=model_cfg["model"],
+            batch_size=2,
+            workers=0,
+            device="cpu",
+            threshold=1.1,
+        )
+    )
+
+    assert result.protocol_json.exists()
+    assert result.resolved_config_json.exists()
+    assert result.checkpoint_json.exists()
+    assert result.sequence_metrics_json.exists()
+    predictions = pd.read_csv(result.predictions_csv)
+    assert {"gt_x_raw", "gt_y_raw", "pred_x_raw", "pred_y_raw", "coordinate_space"}.issubset(predictions.columns)
+
+
+def test_evaluation_can_score_in_raw_coordinate_space(monkeypatch, tmp_path: Path, synthetic_raw_root: Path) -> None:
+    processed = tmp_path / "processed_scaled"
+    preprocess_dataset(PreprocessConfig(raw_root=synthetic_raw_root, output_root=processed, target_width=16, target_height=16, overwrite=True))
+    model_cfg = {"model": {"version": "v2", "sequence_length": 3, "base_channels": 4}}
+    model = build_model(model_cfg["model"])
+    ckpt_path = tmp_path / "eval_model.pt"
+    save_checkpoint(ckpt_path, model, None, None, CheckpointState(epoch=0, global_step=0, best_score=0.0, metrics={}), model_cfg)
+
+    def fake_predict(*args, **kwargs):
+        return [evaluator_module.FramePrediction(frame=2, prediction=Prediction(1, 6.5, 6.0, 1.0))]
+
+    monkeypatch.setattr(evaluator_module.PaperSpec, "aggregate_window_outputs", fake_predict)
+
+    model_result = evaluate_checkpoint(
+        EvaluationConfig(
+                checkpoint_path=ckpt_path,
+                output_dir=tmp_path / "eval_model_space",
+                dataset={"processed_root": str(processed), "sequence_length": 3},
+            model=model_cfg["model"],
+            workers=0,
+            device="cpu",
+            coordinate_space="model",
+            tolerance_pixels=2.0,
+        )
+    )
+    raw_result = evaluate_checkpoint(
+        EvaluationConfig(
+                checkpoint_path=ckpt_path,
+                output_dir=tmp_path / "eval_raw_space",
+                dataset={"processed_root": str(processed), "sequence_length": 3},
+            model=model_cfg["model"],
+            workers=0,
+            device="cpu",
+            coordinate_space="raw",
+            tolerance_pixels=2.0,
+        )
+    )
+
+    assert model_result.metrics["tp"] == 1
+    assert raw_result.metrics["fp1"] == 1
+
+
+def test_v3_full_evaluation_applies_rectifier_when_configured(monkeypatch, tmp_path: Path, synthetic_processed_root: Path) -> None:
+    model_cfg = {"model": {"version": "v3", "sequence_length": 3, "base_channels": 4}}
+    model = build_model(model_cfg["model"])
+    ckpt_path = tmp_path / "tracker.pt"
+    rectifier_path = tmp_path / "rectifier.pt"
+    save_checkpoint(ckpt_path, model, None, None, CheckpointState(epoch=0, global_step=0, best_score=0.0, metrics={}), model_cfg)
+    save_checkpoint(rectifier_path, model, None, None, CheckpointState(epoch=0, global_step=0, best_score=0.0, metrics={}), model_cfg)
+    calls = {"count": 0}
+
+    def fake_predict(*args, **kwargs):
+        return [evaluator_module.FramePrediction(frame=2, prediction=Prediction(1, 4.0, 4.0, 1.0))]
+
+    def fake_rectify(predictions, *, raw_width, raw_height, cfg):
+        calls["count"] += 1
+        return predictions
+
+    monkeypatch.setattr(evaluator_module.PaperSpec, "aggregate_window_outputs", fake_predict)
+    monkeypatch.setattr(evaluator_module, "rectify_predictions", fake_rectify)
+
+    evaluate_checkpoint(
+        EvaluationConfig(
+            checkpoint_path=ckpt_path,
+            output_dir=tmp_path / "eval_v3_full",
+            dataset={"processed_root": str(synthetic_processed_root), "sequence_length": 3},
+            model=model_cfg["model"],
+            workers=0,
+            device="cpu",
+            rectifier_checkpoint_path=rectifier_path,
+        )
+    )
+
+    assert calls["count"] == 1
+
+
+def test_evaluation_streams_predictions_without_sequence_output_cache() -> None:
+    import inspect
+
+    source = inspect.getsource(evaluator_module.evaluate_checkpoint)
+
+    assert "sequence_outputs" not in source
+    assert "torch.cat(sequence_outputs" not in source
+
+
+def test_evaluation_progress_bar_is_enabled_by_default() -> None:
+    import inspect
+
+    signature = inspect.signature(EvaluationConfig)
+    source = inspect.getsource(evaluator_module.evaluate_checkpoint)
+
+    assert signature.parameters["progress"].default is True
+    assert "tqdm(" in source
+    assert "Evaluating" in source
+
+
+def test_evaluation_report_is_concise_and_links_artifacts(tmp_path: Path) -> None:
+    summary_rows = [
+        {
+            "name": "tracknet_v1",
+            "output_dir": str(tmp_path / "evaluation" / "tracknet_v1"),
+            "checkpoint_path": "pretrained_models/tracknet_v1/best_epoch_01.pt",
+            "coordinate_space": "model",
+            "accuracy": 0.9,
+            "precision": 0.8,
+            "recall": 0.7,
+            "f1": 0.7466667,
+            "tp": 7.0,
+            "tn": 2.0,
+            "fp1": 1.0,
+            "fp2": 1.0,
+            "fn": 3.0,
+            "total": 14.0,
+        }
+    ]
+    report_path = tmp_path / "EVALUATION_RESULTS.md"
+
+    write_evaluation_report(report_path, summary_rows)
+
+    text = report_path.read_text(encoding="utf-8")
+    assert "# TrackNet Series Evaluation Results" in text
+    assert "| tracknet_v1 | `pretrained_models/tracknet_v1/best_epoch_01.pt` | model | 0.9000 | 0.8000 | 0.7000 | 0.7467 |" in text
+    assert "`metrics.json`" in text
+    assert "TrackNetV2-sized protocol" in text

@@ -276,6 +276,21 @@ def test_evaluation_merges_paper_defaults_before_aggregation() -> None:
     assert get_paper_spec("v1").target_policy.heatmap_mode == "v1_uint8"
 
 
+def test_paper_specs_own_evaluation_protocol_defaults() -> None:
+    v1 = get_paper_spec("v1").evaluation_protocol
+    v2 = get_paper_spec("v2").evaluation_protocol
+    v3 = get_paper_spec("v3").evaluation_protocol
+    v5 = get_paper_spec("v5").evaluation_protocol
+
+    assert v1.tolerance_pixels == 5.0
+    assert v1.hough_threshold == 128
+    assert v1.coordinate_space == "model"
+    assert v2.tolerance_pixels == 4.0
+    assert v2.threshold == 0.5
+    assert v3.supports_rectifier is True
+    assert v5.coordinate_space == "model"
+
+
 def test_sliding_windows_cover_short_videos_without_dropping_frame_count() -> None:
     windows = _sliding_window_indices(n_frames=2, sequence_length=3)
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
+from dataclasses import asdict, dataclass, field, replace
 from typing import Any, Callable, Literal
 
 import torch
@@ -14,6 +14,43 @@ PostprocessKind = Literal["v1_hough", "largest_blob"]
 TrainingDatasetKind = Literal["heatmap", "trajectory"]
 SplitStrategy = Literal["sequence", "trajectory_sequence"]
 WindowAggregationKind = Literal["last", "weighted_heatmap"]
+CoordinateSpace = Literal["model", "raw"]
+
+
+@dataclass(frozen=True)
+class EvaluationProtocol:
+    """Paper-owned defaults for final metric computation.
+
+    Evaluation configs may override operational details, but the default
+    thresholds, tolerance and coordinate space are part of the paper contract.
+    """
+
+    threshold: float = 0.5
+    hough_threshold: int = 128
+    tolerance_pixels: float = 4.0
+    coordinate_space: CoordinateSpace = "model"
+    supports_rectifier: bool = False
+
+    def with_overrides(
+        self,
+        *,
+        threshold: float | None = None,
+        hough_threshold: int | None = None,
+        tolerance_pixels: float | None = None,
+        coordinate_space: CoordinateSpace | None = None,
+        supports_rectifier: bool | None = None,
+    ) -> "EvaluationProtocol":
+        return replace(
+            self,
+            threshold=self.threshold if threshold is None else float(threshold),
+            hough_threshold=self.hough_threshold if hough_threshold is None else int(hough_threshold),
+            tolerance_pixels=self.tolerance_pixels if tolerance_pixels is None else float(tolerance_pixels),
+            coordinate_space=self.coordinate_space if coordinate_space is None else coordinate_space,
+            supports_rectifier=self.supports_rectifier if supports_rectifier is None else bool(supports_rectifier),
+        )
+
+    def as_dict(self) -> dict[str, Any]:
+        return asdict(self)
 
 
 @dataclass(frozen=True)
@@ -33,6 +70,7 @@ class PaperSpec:
     target_policy: HeatmapTargetPolicy | None = None
     postprocess_kind: PostprocessKind = "largest_blob"
     tolerance_pixels: float = 4.0
+    evaluation_protocol: EvaluationProtocol = field(default_factory=EvaluationProtocol)
     training_dataset_kind: TrainingDatasetKind = "heatmap"
     split_strategy: SplitStrategy = "sequence"
     window_aggregation: WindowAggregationKind = "weighted_heatmap"

@@ -15,7 +15,9 @@ from torch.utils.data import Dataset
 from tracknet.constants import (
     PROCESSED_FRAME_COL,
     PROCESSED_VISIBILITY_COL,
+    PROCESSED_X_RAW_COL,
     PROCESSED_X_MODEL_COL,
+    PROCESSED_Y_RAW_COL,
     PROCESSED_Y_MODEL_COL,
 )
 from tracknet.data.heatmaps import make_heatmap
@@ -33,6 +35,7 @@ class SequenceRecord:
     background_path: Path | None
     width: int
     height: int
+    transform: dict[str, Any] | None
     annotations: pd.DataFrame
 
 
@@ -121,6 +124,7 @@ class ProcessedTrackNetDataset(Dataset[dict[str, Any]]):
                     background_path=bg_path if bg_path.exists() else None,
                     width=int(meta["target_width"]),
                     height=int(meta["target_height"]),
+                    transform=meta.get("transform") if isinstance(meta.get("transform"), dict) else None,
                     annotations=ann,
                 )
             )
@@ -231,6 +235,8 @@ class ProcessedTrackNetDataset(Dataset[dict[str, Any]]):
                     "visibility": int(row[PROCESSED_VISIBILITY_COL]),
                     "x_model": float(row[PROCESSED_X_MODEL_COL]),
                     "y_model": float(row[PROCESSED_Y_MODEL_COL]),
+                    "x_raw": float(row[PROCESSED_X_RAW_COL]),
+                    "y_raw": float(row[PROCESSED_Y_RAW_COL]),
                     "local_index": local_idx,
                 }
             )
@@ -252,6 +258,11 @@ class ProcessedTrackNetDataset(Dataset[dict[str, Any]]):
             "sequence_id": seq.sequence_id,
             "match_name": seq.match_name,
             "sequence_name": seq.sequence_name,
+            "sequence_meta": {
+                "width": seq.width,
+                "height": seq.height,
+                "transform": seq.transform,
+            },
             "start": win.start,
             "frame_indices": frame_indices,
             "target_info": target_info,

@@ -1,0 +1,32 @@
+{
+  "batch_size": 4,
+  "checkpoint_path": "pretrained_models/tracknet_v2/best_epoch_01.pt",
+  "dataset": {
+    "processed_root": "dataset/processed/tracknet_dataset_512x288",
+    "sequence_length": 3,
+    "split_file": "dataset/processed/tracknet_dataset_512x288/splits/test.txt"
+  },
+  "device": "auto",
+  "model": {
+    "base_channels": 64,
+    "dropout": 0.0,
+    "sequence_length": 3,
+    "version": "v2"
+  },
+  "output_dir": "pretrained_models/evaluation/tracknet_v2",
+  "progress": true,
+  "protocol": {
+    "coordinate_space": "model",
+    "hough_threshold": 128,
+    "supports_rectifier": false,
+    "threshold": 0.5,
+    "tolerance_pixels": 4.0
+  },
+  "rectifier": {
+    "checkpoint_path": null,
+    "delta_y_pixels": 30.0,
+    "model": null,
+    "trajectory_length": 16
+  },
+  "workers": 4
+}

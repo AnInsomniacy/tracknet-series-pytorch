@@ -1,0 +1,10 @@
+evaluation:
+  checkpoint_path: pretrained_models/tracknet_v5/best_epoch_02.pt
+  output_dir: pretrained_models/evaluation/tracknet_v5
+  batch_size: 4
+  workers: 4
+  device: auto
+  dataset:
+    processed_root: dataset/processed/tracknet_dataset_512x288
+    sequence_length: 3
+    split_file: dataset/processed/tracknet_dataset_512x288/splits/test.txt
