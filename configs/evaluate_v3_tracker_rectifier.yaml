@@ -1,7 +1,7 @@
 evaluation:
-  checkpoint_path: pretrained_models/tracknet_v3/tracker/best_epoch_11.pt
-  rectifier_checkpoint_path: pretrained_models/tracknet_v3/rectifier/best_epoch_25.pt
-  output_dir: pretrained_models/evaluation/tracknet_v3_full
+  checkpoint_path: external_release_assets/tracknet_v3_tracker_best.pt
+  rectifier_checkpoint_path: external_release_assets/tracknet_v3_rectifier_best.pt
+  output_dir: model_results/evaluation/tracknet_v3_tracker_rectifier
   batch_size: 4
   workers: 4
   device: auto
