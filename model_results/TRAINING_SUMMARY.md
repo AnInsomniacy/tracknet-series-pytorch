@@ -1,17 +1,16 @@
-# TrackNet Series Pretrained Models
+# TrackNet Series Training Results
 
-This directory contains pretrained TrackNet V1-V5 model artifacts and the complete TensorBoard logs from the corresponding training runs.
+This directory contains tracked training logs and evaluation artifacts for the TrackNet V1-V5 training runs. Model checkpoint files remain in the local `outputs/train/` run directories and are not versioned in Git.
 
 ## File Contents
 
-- `best_epoch_XX.pt`: model-only checkpoint saved from the best validation epoch.
-- `last_epoch_30.pt`: full training checkpoint saved after the final epoch.
-- `tensorboard/`: complete TensorBoard event logs for the training run.
+- `training_logs/`: TensorBoard event logs copied from each completed training run.
+- `evaluation/`: evaluation metrics, protocols, resolved configs, checkpoint metadata, and frame-level predictions.
 
 TrackNet V3 is split into two trained modules:
 
-- `tracknet_v3/tracker/`: the V3 heatmap tracking network.
-- `tracknet_v3/rectifier/`: the V3 trajectory rectification network.
+- `tracknet_v3_tracker`: the V3 heatmap tracking network.
+- `tracknet_v3_rectifier`: the V3 trajectory rectification network.
 
 ## Training Setup
 
@@ -41,34 +40,42 @@ TrackNet V3 used paper-matched global batch sizes:
 | TrackNet V4 | 1 | 30 | 1 | 2 | Adadelta | 1.0 |
 | TrackNet V5 | 2 | 30 | 1 | 2 | AdamW | 0.0001 |
 
+## Local Checkpoints
+
+The evaluation configs use these local best-validation model checkpoints:
+
+```text
+outputs/train/tracknet_v1_20260511_120015/checkpoints/model_best.pt
+outputs/train/tracknet_v2_20260511_003832/checkpoints/model_best.pt
+outputs/train/tracknet_v3_tracker_20260512_003925/checkpoints/model_best.pt
+outputs/train/tracknet_v3_rectifier_20260512_003951/checkpoints/model_best.pt
+outputs/train/tracknet_v4_20260511_002432/checkpoints/model_best.pt
+outputs/train/tracknet_v5_20260511_002455/checkpoints/model_best.pt
+```
+
 ## Directory Layout
 
 ```text
-pretrained_models/
+model_results/
   TRAINING_SUMMARY.md
-  tracknet_v1/
-    best_epoch_01.pt
-    last_epoch_30.pt
-    tensorboard/
-  tracknet_v2/
-    best_epoch_01.pt
-    last_epoch_30.pt
-    tensorboard/
-  tracknet_v3/
-    tracker/
-      best_epoch_11.pt
-      last_epoch_30.pt
+  training_logs/
+    tracknet_v1/
       tensorboard/
-    rectifier/
-      best_epoch_25.pt
-      last_epoch_30.pt
+    tracknet_v2/
       tensorboard/
-  tracknet_v4/
-    best_epoch_01.pt
-    last_epoch_30.pt
-    tensorboard/
-  tracknet_v5/
-    best_epoch_02.pt
-    last_epoch_30.pt
-    tensorboard/
+    tracknet_v3_tracker/
+      tensorboard/
+    tracknet_v3_rectifier/
+      tensorboard/
+    tracknet_v4/
+      tensorboard/
+    tracknet_v5/
+      tensorboard/
+  evaluation/
+    tracknet_v1/
+    tracknet_v2/
+    tracknet_v3_tracker/
+    tracknet_v3_tracker_rectifier/
+    tracknet_v4/
+    tracknet_v5/
 ```

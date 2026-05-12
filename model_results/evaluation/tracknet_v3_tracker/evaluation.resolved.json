@@ -1,6 +1,6 @@
 {
   "batch_size": 4,
-  "checkpoint_path": "pretrained_models/tracknet_v3/tracker/best_epoch_11.pt",
+  "checkpoint_path": "outputs/train/tracknet_v3_tracker_20260512_003925/checkpoints/model_best.pt",
   "dataset": {
     "processed_root": "dataset/processed/tracknet_dataset_512x288",
     "sequence_length": 8,
@@ -13,7 +13,7 @@
     "sequence_length": 8,
     "version": "v3"
   },
-  "output_dir": "pretrained_models/evaluation/tracknet_v3_tracker",
+  "output_dir": "model_results/evaluation/tracknet_v3_tracker",
   "progress": true,
   "protocol": {
     "coordinate_space": "model",

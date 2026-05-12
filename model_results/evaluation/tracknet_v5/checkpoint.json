@@ -1,6 +1,6 @@
 {
   "best_score": null,
-  "checkpoint_path": "pretrained_models/tracknet_v5/best_epoch_02.pt",
+  "checkpoint_path": "outputs/train/tracknet_v5_20260511_002455/checkpoints/model_best.pt",
   "epoch": null,
   "format_version": 1,
   "global_step": null,

@@ -1,6 +1,6 @@
 evaluation:
-  checkpoint_path: pretrained_models/tracknet_v5/best_epoch_02.pt
-  output_dir: pretrained_models/evaluation/tracknet_v5
+  checkpoint_path: outputs/train/tracknet_v5_20260511_002455/checkpoints/model_best.pt
+  output_dir: model_results/evaluation/tracknet_v5
   batch_size: 4
   workers: 4
   device: auto

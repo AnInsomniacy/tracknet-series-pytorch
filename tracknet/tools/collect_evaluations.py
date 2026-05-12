@@ -13,8 +13,8 @@ from tracknet.utils.io import ensure_dir, read_json, write_json
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Collect TrackNet evaluation result directories")
-    parser.add_argument("--root", type=Path, default=Path("pretrained_models/evaluation"), help="Directory containing per-model evaluation folders")
-    parser.add_argument("--report", type=Path, default=Path("pretrained_models/EVALUATION_RESULTS.md"), help="Markdown report path")
+    parser.add_argument("--root", type=Path, default=Path("model_results/evaluation"), help="Directory containing per-model evaluation folders")
+    parser.add_argument("--report", type=Path, default=Path("model_results/EVALUATION_RESULTS.md"), help="Markdown report path")
     parser.add_argument("--summary-csv", type=Path, default=None, help="Optional summary CSV path")
     return parser.parse_args()
 
@@ -60,13 +60,13 @@ def collect_evaluation_rows(root: Path) -> list[dict[str, Any]]:
 
 
 def write_evaluation_report(path: Path, rows: list[dict[str, Any]]) -> None:
-    """Write a concise release report for exported pretrained evaluations."""
+    """Write a concise report for tracked evaluation artifacts."""
 
     ensure_dir(path.parent)
     lines = [
         "# TrackNet Series Evaluation Results",
         "",
-        "This file summarizes the evaluation results for the pretrained TrackNet V1-V5 checkpoints in this directory.",
+        "This file summarizes the tracked evaluation results for the trained TrackNet V1-V5 checkpoints.",
         "",
         "## Evaluation Protocol",
         "",

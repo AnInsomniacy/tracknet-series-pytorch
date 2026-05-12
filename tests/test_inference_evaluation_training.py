@@ -738,7 +738,7 @@ def test_v3_full_evaluation_applies_rectifier_when_configured(monkeypatch, tmp_p
     evaluate_checkpoint(
         EvaluationConfig(
             checkpoint_path=ckpt_path,
-            output_dir=tmp_path / "eval_v3_full",
+            output_dir=tmp_path / "eval_v3_tracker_rectifier",
             dataset={"processed_root": str(synthetic_processed_root), "sequence_length": 3},
             model=model_cfg["model"],
             workers=0,
@@ -775,7 +775,7 @@ def test_evaluation_report_is_concise_and_links_artifacts(tmp_path: Path) -> Non
         {
             "name": "tracknet_v1",
             "output_dir": str(tmp_path / "evaluation" / "tracknet_v1"),
-            "checkpoint_path": "pretrained_models/tracknet_v1/best_epoch_01.pt",
+            "checkpoint_path": "outputs/train/tracknet_v1_20260511_120015/checkpoints/model_best.pt",
             "coordinate_space": "model",
             "accuracy": 0.9,
             "precision": 0.8,
@@ -795,6 +795,6 @@ def test_evaluation_report_is_concise_and_links_artifacts(tmp_path: Path) -> Non
 
     text = report_path.read_text(encoding="utf-8")
     assert "# TrackNet Series Evaluation Results" in text
-    assert "| tracknet_v1 | `pretrained_models/tracknet_v1/best_epoch_01.pt` | model | 0.9000 | 0.8000 | 0.7000 | 0.7467 |" in text
+    assert "| tracknet_v1 | `outputs/train/tracknet_v1_20260511_120015/checkpoints/model_best.pt` | model | 0.9000 | 0.8000 | 0.7000 | 0.7467 |" in text
     assert "`metrics.json`" in text
     assert "TrackNetV2-sized protocol" in text

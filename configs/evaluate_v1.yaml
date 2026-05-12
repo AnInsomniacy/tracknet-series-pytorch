@@ -1,6 +1,6 @@
 evaluation:
-  checkpoint_path: pretrained_models/tracknet_v1/best_epoch_01.pt
-  output_dir: pretrained_models/evaluation/tracknet_v1
+  checkpoint_path: outputs/train/tracknet_v1_20260511_120015/checkpoints/model_best.pt
+  output_dir: model_results/evaluation/tracknet_v1
   batch_size: 1
   workers: 0
   device: auto

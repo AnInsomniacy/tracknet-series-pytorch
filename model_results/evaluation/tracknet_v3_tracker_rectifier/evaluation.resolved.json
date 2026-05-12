@@ -1,6 +1,6 @@
 {
   "batch_size": 4,
-  "checkpoint_path": "external_release_assets/tracknet_v3_tracker_best.pt",
+  "checkpoint_path": "outputs/train/tracknet_v3_tracker_20260512_003925/checkpoints/model_best.pt",
   "dataset": {
     "processed_root": "dataset/processed/tracknet_dataset_512x288",
     "sequence_length": 8,
@@ -23,7 +23,7 @@
     "tolerance_pixels": 4.0
   },
   "rectifier": {
-    "checkpoint_path": "external_release_assets/tracknet_v3_rectifier_best.pt",
+    "checkpoint_path": "outputs/train/tracknet_v3_rectifier_20260512_003951/checkpoints/model_best.pt",
     "delta_y_pixels": 30.0,
     "model": null,
     "trajectory_length": 16
