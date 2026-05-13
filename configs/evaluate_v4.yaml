@@ -1,5 +1,5 @@
 evaluation:
-  checkpoint_path: outputs/train/tracknet_v4_20260511_002432/checkpoints/model_best.pt
+  checkpoint_path: outputs/train/tracknet_v4_20260511_002432/checkpoints/last.pt
   output_dir: model_results/evaluation/tracknet_v4
   batch_size: 4
   workers: 4

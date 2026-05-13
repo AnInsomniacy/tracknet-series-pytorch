@@ -1,7 +1,0 @@
-{
-  "coordinate_space": "model",
-  "hough_threshold": 128,
-  "supports_rectifier": true,
-  "threshold": 0.5,
-  "tolerance_pixels": 4.0
-}

@@ -1,6 +1,6 @@
 {
   "batch_size": 4,
-  "checkpoint_path": "outputs/train/tracknet_v2_20260511_003832/checkpoints/model_best.pt",
+  "checkpoint_path": "outputs/train/tracknet_v2_20260511_003832/checkpoints/last.pt",
   "dataset": {
     "processed_root": "dataset/processed/tracknet_dataset_512x288",
     "sequence_length": 3,

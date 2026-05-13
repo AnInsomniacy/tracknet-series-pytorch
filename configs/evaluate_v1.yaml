@@ -1,9 +1,10 @@
 evaluation:
-  checkpoint_path: outputs/train/tracknet_v1_20260511_120015/checkpoints/model_best.pt
+  checkpoint_path: outputs/train/tracknet_v1_20260511_120015/checkpoints/last.pt
   output_dir: model_results/evaluation/tracknet_v1
   batch_size: 1
   workers: 0
   device: auto
+  tolerance_pixels: 7.5
   dataset:
     processed_root: dataset/processed/tracknet_dataset_640x360
     sequence_length: 3

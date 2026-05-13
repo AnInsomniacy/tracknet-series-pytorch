@@ -1,11 +1,11 @@
 {
-  "best_score": null,
-  "checkpoint_path": "outputs/train/tracknet_v3_tracker_20260512_003925/checkpoints/model_best.pt",
-  "epoch": null,
+  "best_score": 8.563941082684323e-05,
+  "checkpoint_path": "outputs/train/tracknet_v3_tracker_20260512_003925/checkpoints/last.pt",
+  "epoch": 29,
   "format_version": 1,
-  "global_step": null,
+  "global_step": 187590,
   "metrics": {
-    "train_loss": 5.1311399147380143e-05,
-    "val_loss": 8.563941082684323e-05
+    "train_loss": 3.460373045527376e-05,
+    "val_loss": 0.00010166955325985327
   }
 }
