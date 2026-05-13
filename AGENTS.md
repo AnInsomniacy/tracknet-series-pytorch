@@ -138,11 +138,10 @@ config.resolved.json
 metrics.last.json
 tensorboard/
 checkpoints/last.pt
-checkpoints/best.pt
-checkpoints/model_best.pt
+checkpoints/
 ```
 
-Use `model_best.pt` or `best.pt` for best-validation evaluation. Do not default to `last.pt` unless explicitly requested.
+Use the completed-training checkpoint for reported evaluation unless the user explicitly requests a different checkpoint policy.
 
 Delete training outputs only when explicitly requested.
 

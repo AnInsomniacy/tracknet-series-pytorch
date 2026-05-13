@@ -25,7 +25,7 @@ The project provides source code for preprocessing, training, evaluation, video 
 - A stable processed dataset format built from raw badminton rally videos and trajectory CSV annotations.
 - Paper-owned target generation, post-processing, window aggregation, and evaluation protocols.
 - Single-GPU and PyTorch Distributed Data Parallel training.
-- Checkpoint resume, TensorBoard logging, and best-validation model export.
+- Checkpoint resume, TensorBoard logging, and evaluation-ready checkpoint export.
 - Reproducible evaluation artifacts under `model_results/`.
 - Frame-preserving video inference that exports `Frame,Visibility,X,Y` in raw video coordinates.
 - Synthetic tests for data handling, model shapes, losses, checkpoints, training, evaluation, and inference.
@@ -34,7 +34,7 @@ The project provides source code for preprocessing, training, evaluation, video 
 
 | Version | Main module | Input contract | Target / loss | Evaluation behavior |
 | --- | --- | --- | --- | --- |
-| TrackNet V1 | `tracknet.models.tracknet_v1.TrackNetV1` | 3 RGB frames, 640x360 default | 256-class heatmap, cross entropy | Last-frame prediction, Hough-circle decoding, 5 px tolerance |
+| TrackNet V1 | `tracknet.models.tracknet_v1.TrackNetV1` | 3 RGB frames, 640x360 default | 256-class heatmap, cross entropy | Last-frame prediction, Hough-circle decoding, configured evaluation tolerance |
 | TrackNet V2 | `tracknet.models.tracknet_v2.TrackNetV2` | 3 RGB frames, 512x288 default | 3 sigmoid heatmaps, WBCE | Weighted window aggregation, largest-blob centroid, 4 px tolerance |
 | TrackNet V3 tracker | `tracknet.models.tracknet_v3.TrackNetV3Tracker` | 8 RGB frames plus match background | Binary-disk heatmaps, WBCE, video mixup | Center-weighted aggregation, optional rectifier support |
 | TrackNet V3 rectifier | `tracknet.models.tracknet_v3.TrajectoryRectifier` | Trajectory windows `[x,y,visibility,mask]` | Masked trajectory MSE | Repairs raw-coordinate tracker trajectories |
@@ -202,14 +202,10 @@ outputs/train/<experiment>_<timestamp>/
   metrics.last.json
   tensorboard/
   checkpoints/
-    last.pt
-    best.pt
-    model_best.pt
+    ...
 ```
 
-- `last.pt`: full final training state for resume.
-- `best.pt`: full training state from the best validation epoch.
-- `model_best.pt`: model-only checkpoint plus config for evaluation and inference.
+Evaluation configs point to completed 30-epoch trained checkpoints from these run directories.
 
 Resume from a run directory:
 
@@ -222,7 +218,7 @@ Resume from a specific checkpoint:
 
 ```yaml
 train:
-  resume_checkpoint: outputs/train/tracknet_v2_20260511_003832/checkpoints/best.pt
+  resume_checkpoint: outputs/train/tracknet_v2_20260511_003832/checkpoints/last.pt
   output_root: outputs/train
 ```
 
@@ -261,16 +257,15 @@ python -m tracknet.tools.collect_evaluations
 
 ### Completed Evaluation Results
 
-The tracked results below were produced from the best-validation checkpoints listed in `model_results/TRAINING_SUMMARY.md`. They are reproducible repository results, not a claim of paper-level reproduction.
+The tracked results below were produced from completed 30-epoch trained checkpoints listed in `model_results/TRAINING_SUMMARY.md`. They are reproducible repository results, not a claim of paper-level reproduction.
 
 | Model | Coordinate space | Accuracy | Precision | Recall | F1 | Total frames | Protocol summary |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | --- |
-| TrackNet V1 | model | 0.6390 | 0.9939 | 0.5669 | 0.7220 | 12,600 | 640x360, Hough threshold 128, 5 px tolerance |
-| TrackNet V2 | model | 0.7091 | 0.9939 | 0.6513 | 0.7869 | 12,658 | 512x288, threshold 0.5, 4 px tolerance |
-| TrackNet V3 tracker | model | 0.7664 | 0.9913 | 0.7235 | 0.8365 | 12,658 | 512x288, 8-frame tracker, 4 px tolerance |
-| TrackNet V3 tracker + rectifier | raw | 0.6875 | 0.8655 | 0.7154 | 0.7833 | 12,658 | Raw-coordinate rectified trajectory, 4 px tolerance |
-| TrackNet V4 | model | 0.7022 | 0.9910 | 0.6443 | 0.7809 | 12,658 | 512x288, motion fusion, 4 px tolerance |
-| TrackNet V5 | model | 0.6928 | 0.8175 | 0.7347 | 0.7739 | 12,658 | 512x288 public protocol, 4 px tolerance |
+| TrackNet V1 | model | 0.6729 | 0.9978 | 0.6066 | 0.7545 | 12,600 | 640x360, Hough threshold 128, 7.5 px tolerance |
+| TrackNet V2 | model | 0.7299 | 0.9975 | 0.6749 | 0.8051 | 12,658 | 512x288, threshold 0.5, 4 px tolerance |
+| TrackNet V3 tracker + rectifier | raw | 0.7071 | 0.8171 | 0.8019 | 0.8094 | 12,658 | Raw-coordinate rectified trajectory, 4 px tolerance |
+| TrackNet V4 | model | 0.7259 | 0.9979 | 0.6698 | 0.8016 | 12,658 | 512x288, motion fusion, 4 px tolerance |
+| TrackNet V5 | model | 0.6940 | 0.8788 | 0.6903 | 0.7732 | 12,658 | 512x288 public protocol, 4 px tolerance |
 
 Full protocol, confusion counts, checkpoint paths, and artifact descriptions are documented in [`model_results/EVALUATION_RESULTS.md`](model_results/EVALUATION_RESULTS.md).
 
@@ -281,7 +276,7 @@ Edit `configs/predict_video.yaml` with a real input video and checkpoint path:
 ```yaml
 inference:
   video_path: dataset/raw/Test/match1/video/rally1.mp4
-  checkpoint_path: outputs/train/tracknet_v2_20260511_003832/checkpoints/model_best.pt
+  checkpoint_path: outputs/train/tracknet_v2_20260511_003832/checkpoints/last.pt
   output_csv: outputs/predict/rally1_predictions.csv
   output_video: outputs/predict/rally1_overlay.mp4
   target_width: 512
@@ -310,7 +305,7 @@ V3 rectification can be enabled by adding:
 
 ```yaml
 inference:
-  rectifier_checkpoint_path: outputs/train/tracknet_v3_rectifier_20260512_003951/checkpoints/model_best.pt
+  rectifier_checkpoint_path: outputs/train/tracknet_v3_rectifier_20260512_003951/checkpoints/last.pt
   rectifier_sequence_length: 16
   rectifier_delta_y_pixels: 30.0
 ```
