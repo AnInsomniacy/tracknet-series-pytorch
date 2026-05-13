@@ -276,7 +276,7 @@ Edit `configs/predict_video.yaml` with a real input video and checkpoint path:
 ```yaml
 inference:
   video_path: dataset/raw/Test/match1/video/rally1.mp4
-  checkpoint_path: outputs/train/tracknet_v2_20260511_003832/checkpoints/last.pt
+  checkpoint_path: model-v2.0.1-epoch30/tracknet_v2_epoch30.pt
   output_csv: outputs/predict/rally1_predictions.csv
   output_video: outputs/predict/rally1_overlay.mp4
   target_width: 512
@@ -285,6 +285,8 @@ inference:
   threshold: 0.5
   batch_size: 4
   device: auto
+  progress: true
+  verbose: true
 ```
 
 Run:
@@ -301,11 +303,13 @@ Frame,Visibility,X,Y
 1,0,-1,-1
 ```
 
+Inference prints a short run summary, a window-level prediction progress bar, and an overlay-writing progress bar when `output_video` is enabled. OpenCV writes the overlay as a video-only stream, so source audio is not preserved.
+
 V3 rectification can be enabled by adding:
 
 ```yaml
 inference:
-  rectifier_checkpoint_path: outputs/train/tracknet_v3_rectifier_20260512_003951/checkpoints/last.pt
+  rectifier_checkpoint_path: model-v2.0.1-epoch30/tracknet_v3_rectifier_epoch30.pt
   rectifier_sequence_length: 16
   rectifier_delta_y_pixels: 30.0
 ```

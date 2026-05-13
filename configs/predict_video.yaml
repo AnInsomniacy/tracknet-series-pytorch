@@ -1,8 +1,8 @@
 inference:
-  video_path: dataset/raw/Test/match1/video/rally1.mp4
-  checkpoint_path: outputs/train/tracknet_v2_20260511_003832/checkpoints/last.pt
-  output_csv: outputs/predict/rally1_predictions.csv
-  output_video: outputs/predict/rally1_overlay.mp4
+  video_path: dataset/raw/inference/inference_sample.mp4
+  checkpoint_path: model-v2.0.1-epoch30/tracknet_v2_epoch30.pt
+  output_csv: outputs/predict/inference_sample_v2_predictions.csv
+  output_video: outputs/predict/inference_sample_v2_overlay.mp4
   target_width: 512
   target_height: 288
   sequence_length: 3
@@ -11,7 +11,9 @@ inference:
   device: auto
   frame_index_base: 0
   trail_length: 12
+  progress: true
+  verbose: true
   # Optional V3 rectification:
-  # rectifier_checkpoint_path: outputs/train/tracknet_v3_rectifier_20260512_003951/checkpoints/last.pt
+  # rectifier_checkpoint_path: model-v2.0.1-epoch30/tracknet_v3_rectifier_epoch30.pt
   # rectifier_sequence_length: 16
   # rectifier_delta_y_pixels: 30.0

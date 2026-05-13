@@ -11,6 +11,7 @@ import cv2
 import numpy as np
 import pandas as pd
 import torch
+from tqdm import tqdm
 
 from tracknet.constants import CSV_OUTPUT_COLUMNS, RAW_FRAME_COL, RAW_VISIBILITY_COL, RAW_X_COL, RAW_Y_COL
 from tracknet.data.transforms import LetterboxTransform, image_to_tensor_chw_uint8_rgb, letterbox_image
@@ -48,6 +49,8 @@ class VideoPredictionConfig:
     max_background_samples: int = 512
     num_threads: int | None = None
     interop_threads: int | None = None
+    progress: bool = True
+    verbose: bool = True
 
 
 def _open_video(video_path: Path) -> cv2.VideoCapture:
@@ -104,14 +107,25 @@ def _sample_background(video_path: Path, cfg: VideoPredictionConfig) -> tuple[np
     transform: LetterboxTransform | None = None
     stride = max(1, int(cfg.background_sample_stride))
     max_samples = max(1, int(cfg.max_background_samples))
-    for frame_index, frame in _iter_video_frames(video_path):
-        if frame_index % stride != 0:
-            continue
-        rgb, t = letterbox_image(frame, cfg.target_width, cfg.target_height)
-        transform = t if transform is None else transform
-        samples.append(rgb)
-        if len(samples) >= max_samples:
-            break
+    progress_bar = tqdm(
+        total=max_samples,
+        desc="Sampling background",
+        unit="sample",
+        dynamic_ncols=True,
+        disable=not cfg.progress,
+    )
+    try:
+        for frame_index, frame in _iter_video_frames(video_path):
+            if frame_index % stride != 0:
+                continue
+            rgb, t = letterbox_image(frame, cfg.target_width, cfg.target_height)
+            transform = t if transform is None else transform
+            samples.append(rgb)
+            progress_bar.update(1)
+            if len(samples) >= max_samples:
+                break
+    finally:
+        progress_bar.close()
     if transform is None or not samples:
         raise ValueError(f"Could not sample frames for background estimation: {video_path}")
     return _estimate_background(samples), transform
@@ -131,6 +145,51 @@ def _sliding_window_indices(n_frames: int, sequence_length: int) -> list[list[in
     from tracknet.inference.windowing import sliding_windows
 
     return sliding_windows(n_frames, sequence_length)
+
+
+def _validate_prediction_config(*, cfg: VideoPredictionConfig, model_cfg: dict[str, Any]) -> None:
+    if cfg.sequence_length <= 0:
+        raise ValueError("inference.sequence_length must be positive")
+    if cfg.target_width <= 0 or cfg.target_height <= 0:
+        raise ValueError("inference.target_width and inference.target_height must be positive")
+    if cfg.batch_size <= 0:
+        raise ValueError("inference.batch_size must be positive")
+    checkpoint_sequence_length = model_cfg.get("sequence_length")
+    kwargs = model_cfg.get("kwargs")
+    if checkpoint_sequence_length is None and isinstance(kwargs, dict):
+        checkpoint_sequence_length = kwargs.get("sequence_length")
+    if checkpoint_sequence_length is not None and int(checkpoint_sequence_length) != int(cfg.sequence_length):
+        raise ValueError(
+            "inference.sequence_length does not match checkpoint config.model.sequence_length: "
+            f"{cfg.sequence_length} != {checkpoint_sequence_length}"
+        )
+
+
+def _prediction_summary(
+    *,
+    cfg: VideoPredictionConfig,
+    model_cfg: dict[str, Any],
+    frame_count: int,
+    fps: float,
+    raw_width: int,
+    raw_height: int,
+    window_count: int,
+    device: torch.device,
+) -> str:
+    output_video = str(cfg.output_video) if cfg.output_video is not None else "disabled"
+    return "\n".join(
+        [
+            "Video prediction:",
+            f"  video: {cfg.video_path}",
+            f"  checkpoint: {cfg.checkpoint_path}",
+            f"  model: {paper_id_from_model_config(model_cfg)}",
+            f"  device: {device}",
+            f"  source: {raw_width}x{raw_height}, {frame_count} frames, {fps:.3f} fps",
+            f"  input: {cfg.target_width}x{cfg.target_height}, sequence_length={cfg.sequence_length}, windows={window_count}, batch_size={cfg.batch_size}",
+            f"  output_csv: {cfg.output_csv}",
+            f"  output_video: {output_video}",
+        ]
+    )
 
 
 def _build_input_tensor(
@@ -251,6 +310,13 @@ def _predict_streaming(
     )
     predictions_by_frame: dict[int, Prediction] = {}
     window_cursor = 0
+    progress_bar = tqdm(
+        total=len(windows),
+        desc="Predicting windows",
+        unit="window",
+        dynamic_ncols=True,
+        disable=not cfg.progress,
+    )
 
     def buffered_frame(frame_id: int) -> np.ndarray:
         for buffered_id, buffered_rgb in frame_buffer:
@@ -265,6 +331,7 @@ def _predict_streaming(
         with torch.no_grad():
             out = model(batch).detach().cpu()
         aggregator.add_batch(out, batch_windows[: len(out)])
+        progress_bar.update(int(out.shape[0]))
         if batch_windows:
             next_start = batch_windows[-1][0] + 1
             for item in aggregator.finalize_until(next_start):
@@ -272,24 +339,27 @@ def _predict_streaming(
         batch_windows.clear()
         batch_inputs.clear()
 
-    for frame_index, frame in _iter_video_frames(video_path):
-        rgb, _ = letterbox_image(frame, cfg.target_width, cfg.target_height)
-        frame_buffer.append((frame_index, rgb))
-        while window_cursor < len(windows) and max(windows[window_cursor]) <= frame_index:
-            window = windows[window_cursor]
-            batch_windows.append(window)
-            batch_inputs.append(_build_input_tensor([buffered_frame(i) for i in window], list(range(len(window))), background_rgb_model=background_rgb_model))
-            window_cursor += 1
-            if len(batch_inputs) >= int(cfg.batch_size):
-                flush_batch()
-        while len(frame_buffer) > max_buffer:
-            frame_buffer.popleft()
-    if window_cursor != len(windows):
-        raise RuntimeError(f"Video ended before all windows were processed: {window_cursor}/{len(windows)}")
-    flush_batch()
-    for item in aggregator.finalize_all():
-        predictions_by_frame[int(item.frame)] = item.prediction
-    return [predictions_by_frame.get(i, Prediction(visibility=0, x=-1.0, y=-1.0, score=0.0)) for i in range(frame_count)]
+    try:
+        for frame_index, frame in _iter_video_frames(video_path):
+            rgb, _ = letterbox_image(frame, cfg.target_width, cfg.target_height)
+            frame_buffer.append((frame_index, rgb))
+            while window_cursor < len(windows) and max(windows[window_cursor]) <= frame_index:
+                window = windows[window_cursor]
+                batch_windows.append(window)
+                batch_inputs.append(_build_input_tensor([buffered_frame(i) for i in window], list(range(len(window))), background_rgb_model=background_rgb_model))
+                window_cursor += 1
+                if len(batch_inputs) >= int(cfg.batch_size):
+                    flush_batch()
+            while len(frame_buffer) > max_buffer:
+                frame_buffer.popleft()
+        if window_cursor != len(windows):
+            raise RuntimeError(f"Video ended before all windows were processed: {window_cursor}/{len(windows)}")
+        flush_batch()
+        for item in aggregator.finalize_all():
+            predictions_by_frame[int(item.frame)] = item.prediction
+        return [predictions_by_frame.get(i, Prediction(visibility=0, x=-1.0, y=-1.0, score=0.0)) for i in range(frame_count)]
+    finally:
+        progress_bar.close()
 
 
 def _map_predictions_to_raw(predictions: list[Prediction], transform: LetterboxTransform) -> list[Prediction]:
@@ -306,6 +376,9 @@ def _map_predictions_to_raw(predictions: list[Prediction], transform: LetterboxT
 
 
 def run_video_prediction(cfg: VideoPredictionConfig) -> pd.DataFrame:
+    import time
+
+    started = time.perf_counter()
     if cfg.num_threads is not None:
         torch.set_num_threads(int(cfg.num_threads))
     if cfg.interop_threads is not None:
@@ -314,6 +387,7 @@ def run_video_prediction(cfg: VideoPredictionConfig) -> pd.DataFrame:
         except RuntimeError:
             pass
     model_cfg, ckpt = _model_config_from_checkpoint(Path(cfg.checkpoint_path), cfg.model)
+    _validate_prediction_config(cfg=cfg, model_cfg=model_cfg)
     paper_spec = get_paper_spec(paper_id_from_model_config(model_cfg))
     frame_count, fps, raw_w, raw_h = _video_metadata(Path(cfg.video_path))
     transform = LetterboxTransform(
@@ -331,6 +405,20 @@ def run_video_prediction(cfg: VideoPredictionConfig) -> pd.DataFrame:
     load_model_weights(model, ckpt, strict=True)
     device = select_device(cfg.device)
     model.to(device).eval()
+    windows = paper_spec.video_windows(frame_count, cfg.sequence_length)
+    if cfg.verbose:
+        print(
+            _prediction_summary(
+                cfg=cfg,
+                model_cfg=model_cfg,
+                frame_count=frame_count,
+                fps=fps,
+                raw_width=raw_w,
+                raw_height=raw_h,
+                window_count=len(windows),
+                device=device,
+            )
+        )
 
     background = None
     if paper_spec.target_policy is not None and paper_spec.target_policy.include_background:
@@ -380,8 +468,35 @@ def run_video_prediction(cfg: VideoPredictionConfig) -> pd.DataFrame:
         if not writer.isOpened():
             raise RuntimeError(f"Could not open output video writer: {cfg.output_video}")
         trail: deque[tuple[int, int]] = deque()
-        for i, frame in _iter_video_frames(Path(cfg.video_path)):
-            update_trail(trail, raw_preds[i], cfg.trail_length)
-            writer.write(draw_prediction(frame, raw_preds[i], frame_index=i + cfg.frame_index_base, trail=trail))
-        writer.release()
+        progress_bar = tqdm(
+            total=frame_count,
+            desc="Writing overlay",
+            unit="frame",
+            dynamic_ncols=True,
+            disable=not cfg.progress,
+        )
+        try:
+            for i, frame in _iter_video_frames(Path(cfg.video_path)):
+                update_trail(trail, raw_preds[i], cfg.trail_length)
+                writer.write(draw_prediction(frame, raw_preds[i], frame_index=i + cfg.frame_index_base, trail=trail))
+                progress_bar.update(1)
+        finally:
+            progress_bar.close()
+            writer.release()
+    if cfg.verbose:
+        elapsed = time.perf_counter() - started
+        visible = int(sum(1 for p in raw_preds if p.visibility == 1))
+        effective_fps = frame_count / max(elapsed, 1e-9)
+        print(
+            "\n".join(
+                [
+                    "Prediction complete:",
+                    f"  elapsed_seconds: {elapsed:.3f}",
+                    f"  throughput_fps: {effective_fps:.2f}",
+                    f"  visible_predictions: {visible}/{frame_count}",
+                    f"  csv: {cfg.output_csv}",
+                    f"  video: {cfg.output_video if cfg.output_video is not None else 'disabled'}",
+                ]
+            )
+        )
     return df

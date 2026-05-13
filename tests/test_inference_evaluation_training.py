@@ -13,6 +13,7 @@ from tracknet.data.trajectory_dataset import TrajectoryRectifierDataset, Traject
 from tracknet.evaluation import EvaluationConfig, evaluate_checkpoint
 import tracknet.evaluation.evaluator as evaluator_module
 from tracknet.inference import VideoPredictionConfig, run_video_prediction
+import tracknet.inference.video_predictor as video_predictor_module
 from tracknet.inference.postprocess import Prediction, decode_heatmap
 from tracknet.inference.rectification import build_v3_inpainting_mask
 from tracknet.models import build_model
@@ -80,6 +81,104 @@ def test_video_prediction_outputs_all_frames(tmp_path: Path) -> None:
     assert df["Frame"].tolist() == [0, 1, 2, 3, 4]
     assert df["Visibility"].tolist() == [0, 0, 0, 0, 0]
     assert out_video.exists()
+
+
+def test_video_prediction_config_enables_progress_and_verbose_output_by_default() -> None:
+    import inspect
+
+    signature = inspect.signature(VideoPredictionConfig)
+
+    assert signature.parameters["progress"].default is True
+    assert signature.parameters["verbose"].default is True
+
+
+def test_video_prediction_reports_prediction_and_overlay_progress(monkeypatch, tmp_path: Path) -> None:
+    video_path = tmp_path / "in.mp4"
+    _write_synthetic_video(video_path, frames=5)
+    model_cfg = {"model": {"version": "v2", "sequence_length": 3, "base_channels": 4}}
+    model = build_model(model_cfg["model"])
+    ckpt_path = tmp_path / "model.pt"
+    save_checkpoint(ckpt_path, model, None, None, CheckpointState(epoch=0, global_step=0, best_score=0.0, metrics={}), model_cfg)
+    progress_runs: list[dict[str, object]] = []
+
+    class RecordingProgress:
+        def __init__(self, iterable=None, **kwargs):  # noqa: ANN001
+            self.iterable = iterable
+            self.kwargs = kwargs
+            self.updated = 0
+            self.closed = False
+            progress_runs.append({"kwargs": kwargs, "bar": self})
+
+        def __iter__(self):
+            assert self.iterable is not None
+            yield from self.iterable
+
+        def update(self, n: int) -> None:
+            self.updated += int(n)
+
+        def close(self) -> None:
+            self.closed = True
+
+    monkeypatch.setattr(video_predictor_module, "tqdm", RecordingProgress)
+    out_csv = tmp_path / "pred.csv"
+    out_video = tmp_path / "vis.mp4"
+
+    run_video_prediction(
+        VideoPredictionConfig(
+            video_path=video_path,
+            checkpoint_path=ckpt_path,
+            output_csv=out_csv,
+            output_video=out_video,
+            model=model_cfg["model"],
+            target_width=32,
+            target_height=32,
+            sequence_length=3,
+            batch_size=2,
+            threshold=1.1,
+            device="cpu",
+            verbose=False,
+        )
+    )
+
+    by_desc = {str(item["kwargs"]["desc"]): item["bar"] for item in progress_runs}
+    assert set(by_desc) == {"Predicting windows", "Writing overlay"}
+    assert by_desc["Predicting windows"].updated == 3
+    assert by_desc["Writing overlay"].updated == 5
+    assert by_desc["Predicting windows"].closed is True
+    assert by_desc["Writing overlay"].closed is True
+
+
+def test_video_prediction_rejects_sequence_length_that_does_not_match_checkpoint(tmp_path: Path) -> None:
+    video_path = tmp_path / "in.mp4"
+    _write_synthetic_video(video_path, frames=5)
+    model_cfg = {"model": {"version": "v2", "sequence_length": 3, "base_channels": 4}}
+    model = build_model(model_cfg["model"])
+    ckpt_path = tmp_path / "model.pt"
+    save_checkpoint(ckpt_path, model, None, None, CheckpointState(epoch=0, global_step=0, best_score=0.0, metrics={}), model_cfg)
+
+    try:
+        run_video_prediction(
+            VideoPredictionConfig(
+                video_path=video_path,
+                checkpoint_path=ckpt_path,
+                output_csv=tmp_path / "pred.csv",
+                model=model_cfg["model"],
+                target_width=32,
+                target_height=32,
+                sequence_length=8,
+                batch_size=2,
+                threshold=1.1,
+                device="cpu",
+                progress=False,
+                verbose=False,
+            )
+        )
+    except ValueError as exc:
+        assert "sequence_length" in str(exc)
+        assert "checkpoint" in str(exc)
+        return
+
+    raise AssertionError("prediction must reject a sequence_length mismatch before model execution")
 
 
 def test_evaluation_runs_on_synthetic_processed(tmp_path: Path, synthetic_processed_root: Path) -> None:

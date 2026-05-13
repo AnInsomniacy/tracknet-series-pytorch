@@ -44,6 +44,8 @@ def main() -> None:
         max_background_samples=int(section.get("max_background_samples", 512)),
         num_threads=int(section["num_threads"]) if section.get("num_threads") is not None else None,
         interop_threads=int(section["interop_threads"]) if section.get("interop_threads") is not None else None,
+        progress=bool(section.get("progress", True)),
+        verbose=bool(section.get("verbose", True)),
     )
     df = run_video_prediction(icfg)
     print(f"Wrote {len(df)} frame predictions to {icfg.output_csv}")

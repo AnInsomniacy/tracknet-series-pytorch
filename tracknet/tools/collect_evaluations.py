@@ -64,7 +64,7 @@ def write_evaluation_report(path: Path, rows: list[dict[str, Any]]) -> None:
 
     ensure_dir(path.parent)
     lines = [
-        "# TrackNet Series Evaluation Report",
+        "# TrackNet Series Evaluation Results",
         "",
         "This report summarizes the tracked evaluation results for the completed 30-epoch TrackNet V1-V5 training runs.",
         "",
