@@ -13,6 +13,20 @@ The results are reproducible repository outputs from the current implementation 
 - Evaluation command: `python -m tracknet.tools.evaluate --config <config>`.
 - Aggregate report command: `python -m tracknet.tools.collect_evaluations`.
 
+## Result Files
+
+```text
+model_results/evaluation/
+  summary.csv
+  summary.json
+  tracknet_v1/
+  tracknet_v2/
+  tracknet_v3_tracker/
+  tracknet_v3_tracker_rectifier/
+  tracknet_v4/
+  tracknet_v5/
+```
+
 ## Protocol Summary
 
 | Model | Config | Dataset root | Sequence length | Coordinate space | Decoder / aggregation | Tolerance |
@@ -74,20 +88,6 @@ The V3 rectifier evaluation is reported in raw coordinate space. In this run, re
 TrackNet V5 has the highest recall among the non-rectified 3-frame variants, but its precision is substantially lower because of a high `fp1` count. The current V5 result therefore does not match the strong paper-reported profile for the full model.
 
 Overall, these results validate that the end-to-end preprocessing, checkpoint loading, paper-specific decoding, metric export, and report collection paths are operational. They do not establish paper-level reproduction accuracy.
-
-## Artifact Layout
-
-```text
-model_results/evaluation/
-  summary.csv
-  summary.json
-  tracknet_v1/
-  tracknet_v2/
-  tracknet_v3_tracker/
-  tracknet_v3_tracker_rectifier/
-  tracknet_v4/
-  tracknet_v5/
-```
 
 Each per-model directory contains:
 

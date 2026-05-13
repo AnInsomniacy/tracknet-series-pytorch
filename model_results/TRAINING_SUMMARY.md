@@ -18,6 +18,13 @@ model_results/
 - `evaluation/`: evaluation metrics, protocols, resolved configs, checkpoint metadata, and frame-level prediction files.
 - `EVALUATION_RESULTS.md`: detailed evaluation report for the best-validation checkpoints.
 
+## Run Policy
+
+- Model checkpoint files are stored locally under `outputs/train/`.
+- Git tracks TensorBoard log exports and evaluation artifacts, not `.pt` checkpoint files.
+- Evaluation configs use `model_best.pt` from each run.
+- TrackNet V3 is represented by two trained modules: tracker and rectifier.
+
 ## Training Environment
 
 | Field | Value |

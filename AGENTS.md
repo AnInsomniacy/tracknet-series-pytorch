@@ -36,11 +36,11 @@ Read only the files needed for the task.
 
 Preferred inspection targets:
 
-- source code under `tracknet/`
-- configs under `configs/`
-- tests under `tests/`
-- project Markdown files
-- lightweight tracked result summaries under `model_results/`
+- Source code under `tracknet/`.
+- Configs under `configs/`.
+- Tests under `tests/`.
+- Project Markdown files.
+- Lightweight tracked result summaries under `model_results/`.
 
 Avoid reading dependencies, virtual environments, real datasets, processed frames, large checkpoints, or full training outputs unless they are directly required.
 
@@ -107,11 +107,11 @@ Do not start multiple DDP training jobs at the exact same time. Start them seque
 
 Before considering a job started, confirm:
 
-- the tmux session exists;
-- the intended GPUs are being used;
-- TensorBoard has a unique port when training enables it;
-- progress has started;
-- there is no immediate traceback or OOM.
+- The tmux session exists.
+- The intended GPUs are being used.
+- TensorBoard has a unique port when training enables it.
+- Progress has started.
+- There is no immediate traceback or OOM.
 
 This avoids TensorBoard port races, DDP initialization ambiguity, CUDA allocation conflicts, and unclear logs.
 

@@ -4,7 +4,22 @@ PyTorch implementation of the TrackNet shuttlecock trajectory tracking family, c
 
 The project provides source code for preprocessing, training, evaluation, video inference, visualization, and synthetic tests. Paper-specific behavior is centralized in version contracts, while the training, evaluation, and inference engines stay model-agnostic.
 
-## What This Repository Provides
+## Contents
+
+- [Capabilities](#capabilities)
+- [Model Coverage](#model-coverage)
+- [Repository Layout](#repository-layout)
+- [Environment](#environment)
+- [Raw Dataset Layout](#raw-dataset-layout)
+- [Preprocessing](#preprocessing)
+- [Training](#training)
+- [Evaluation](#evaluation)
+- [Video Inference](#video-inference)
+- [Visualization](#visualization)
+- [Tests](#tests)
+- [Artifact Policy](#artifact-policy)
+
+## Capabilities
 
 - TrackNet V1-V5 model implementations.
 - A stable processed dataset format built from raw badminton rally videos and trajectory CSV annotations.
@@ -59,6 +74,8 @@ model_results/        # tracked logs, metrics, reports, and evaluation artifacts
 
 Use the `tracknet` conda environment unless you are intentionally building a different runtime.
 
+Install and run from source:
+
 ```bash
 conda activate tracknet
 pip install -r requirements.txt
@@ -107,19 +124,19 @@ Frame, Visibility, X, Y
 
 Preprocessing creates neutral frame and coordinate records. It does not write paper-specific heatmaps; those are generated on demand during training and evaluation.
 
-Default 512x288 preprocessing for V2-V5:
+Run default 512x288 preprocessing for V2-V5:
 
 ```bash
 python -m tracknet.tools.preprocess --config configs/preprocess.yaml
 ```
 
-V1 640x360 preprocessing:
+Run V1 640x360 preprocessing:
 
 ```bash
 python -m tracknet.tools.preprocess --config configs/preprocess_v1_640x360.yaml
 ```
 
-High-worker variants are available for full machine preprocessing:
+Run high-worker variants for full-machine preprocessing:
 
 ```bash
 python -m tracknet.tools.preprocess --config configs/preprocess_fast_512x288.yaml
@@ -154,7 +171,7 @@ frame, visibility, x_raw, y_raw, x_model, y_model, frame_file
 
 Training requires explicit split files produced by preprocessing. The default full-training configs use 30 epochs with AMP disabled.
 
-Single-process examples:
+Run single-process training:
 
 ```bash
 python -m tracknet.tools.train --config configs/train_v1.yaml
@@ -165,7 +182,7 @@ python -m tracknet.tools.train --config configs/train_v4.yaml
 python -m tracknet.tools.train --config configs/train_v5.yaml
 ```
 
-Two-GPU DDP example:
+Run two-GPU DDP training:
 
 ```bash
 CUDA_VISIBLE_DEVICES=4,5 torchrun --standalone --nproc_per_node=2 -m tracknet.tools.train --config configs/train_v4.yaml
@@ -212,6 +229,8 @@ train:
 ## Evaluation
 
 Each evaluation config evaluates one checkpoint and writes one independent result directory under `model_results/evaluation/`.
+
+Run the full evaluation set:
 
 ```bash
 python -m tracknet.tools.evaluate --config configs/evaluate_v1.yaml
@@ -279,7 +298,7 @@ Run:
 python -m tracknet.tools.predict_video --config configs/predict_video.yaml
 ```
 
-CSV output is frame-preserving and uses the original video coordinate system:
+The CSV output is frame-preserving and uses the original video coordinate system:
 
 ```text
 Frame,Visibility,X,Y
