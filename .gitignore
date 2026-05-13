@@ -55,6 +55,7 @@ tensorboard/
 mlruns/
 pretrained_models/
 trained_model_exports/
+/model-v2.0.1-epoch30/
 lightning_logs/
 
 # Model checkpoints, exported weights, and accelerator artifacts
