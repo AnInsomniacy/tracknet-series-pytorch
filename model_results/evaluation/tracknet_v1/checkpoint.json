@@ -1,0 +1,11 @@
+{
+  "best_score": null,
+  "checkpoint_path": "outputs/train/tracknet_v1_20260511_120015/checkpoints/model_best.pt",
+  "epoch": null,
+  "format_version": 1,
+  "global_step": null,
+  "metrics": {
+    "train_loss": 0.08292030543088913,
+    "val_loss": 0.008501394651830196
+  }
+}

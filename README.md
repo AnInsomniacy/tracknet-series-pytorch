@@ -261,17 +261,26 @@ Distributed settings are inferred from `RANK/LOCAL_RANK/WORLD_SIZE`. Rank 0 crea
 
 ## Evaluation
 
-Edit `configs/evaluate.yaml` so checkpoint, dataset and model settings match training:
+Each paper-specific evaluation config points to the local best-validation `model_best.pt` checkpoint and writes tracked artifacts under `model_results/evaluation/`:
 
 ```bash
-python -m tracknet.tools.evaluate --config configs/evaluate.yaml
+python -m tracknet.tools.evaluate --config configs/evaluate_v1.yaml
+python -m tracknet.tools.evaluate --config configs/evaluate_v2.yaml
+python -m tracknet.tools.evaluate --config configs/evaluate_v3_tracker.yaml
+python -m tracknet.tools.evaluate --config configs/evaluate_v3_tracker_rectifier.yaml
+python -m tracknet.tools.evaluate --config configs/evaluate_v4.yaml
+python -m tracknet.tools.evaluate --config configs/evaluate_v5.yaml
 ```
 
 Outputs:
 
 ```text
-outputs/eval/<name>/
+model_results/evaluation/<name>/
   metrics.json
+  metrics.by_sequence.json
+  protocol.json
+  evaluation.resolved.json
+  checkpoint.json
   predictions.csv
 ```
 
@@ -285,6 +294,27 @@ Evaluation uses the common TrackNet confusion categories:
 
 V2/V4/V5 default to a 4 px tolerance. V1 tennis/badminton tolerances can be configured according to the paper setting.
 
+### Completed Evaluation Results
+
+The tracked results in `model_results/evaluation/` were produced from the best-validation checkpoints listed in `model_results/TRAINING_SUMMARY.md`. V1 uses 640x360 processed inputs and the V1 Hough-circle protocol with 5 px tolerance. V2, V4, and V5 use 512x288 inputs with largest-blob centroid decoding and 4 px tolerance. V3 is reported as both tracker-only and tracker plus trajectory rectifier.
+
+| Model | Accuracy | Precision | Recall | F1 | Total Frames | Protocol |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| TrackNet V1 | 0.6390 | 0.9939 | 0.5669 | 0.7220 | 12600 | V1, 640x360, Hough, 5 px |
+| TrackNet V2 | 0.7091 | 0.9939 | 0.6513 | 0.7869 | 12658 | 512x288, blob centroid, 4 px |
+| TrackNet V3 tracker | 0.7664 | 0.9913 | 0.7235 | 0.8365 | 12658 | 512x288, center-weighted aggregation, 4 px |
+| TrackNet V3 tracker + rectifier | 0.6875 | 0.8655 | 0.7154 | 0.7833 | 12658 | Raw coordinate output with rectification, 4 px |
+| TrackNet V4 | 0.7022 | 0.9910 | 0.6443 | 0.7809 | 12658 | 512x288, motion fusion, 4 px |
+| TrackNet V5 | 0.6928 | 0.8175 | 0.7347 | 0.7739 | 12658 | 512x288, MDD/RSTR/TSATT, 4 px |
+
+The detailed reproducibility report is `model_results/EVALUATION_RESULTS.md`; it includes checkpoint paths, coordinate spaces, confusion-count totals, and artifact locations.
+
+To regenerate the summary report from tracked evaluation folders:
+
+```bash
+python -m tracknet.tools.collect_evaluations
+```
+
 ## Video Inference
 
 Edit `configs/predict_video.yaml`:
@@ -292,7 +322,7 @@ Edit `configs/predict_video.yaml`:
 ```yaml
 inference:
   video_path: data/raw/match1/video/rally1.mp4
-  checkpoint_path: outputs/train/tracknet_v2/checkpoints/best.pt
+  checkpoint_path: outputs/train/tracknet_v2_20260511_003832/checkpoints/model_best.pt
   output_csv: outputs/predict/rally1_predictions.csv
   output_video: outputs/predict/rally1_overlay.mp4
   target_width: 512
@@ -321,7 +351,7 @@ The V3 rectifier can be enabled during video inference:
 
 ```yaml
 inference:
-  rectifier_checkpoint_path: outputs/train/tracknet_v3_rectifier/checkpoints/best.pt
+  rectifier_checkpoint_path: outputs/train/tracknet_v3_rectifier_20260512_003951/checkpoints/model_best.pt
   rectifier_sequence_length: 16
   rectifier_delta_y_pixels: 30.0
 ```
