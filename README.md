@@ -1,25 +1,84 @@
-# TrackNet Series Industrial PyTorch
+# TrackNet Series PyTorch
 
-A clean PyTorch project for the TrackNet model series. The legacy repository is used only to identify the raw dataset layout and historical experiment intent; this project does not keep the legacy entry points or directory structure.
+PyTorch implementation of the TrackNet shuttlecock trajectory tracking family, covering TrackNet V1, V2, V3, V4, and V5 in one reproducible pipeline.
 
-## Project Goals
+The project provides source code for preprocessing, training, evaluation, video inference, visualization, and synthetic tests. Paper-specific behavior is centralized in version contracts, while the training, evaluation, and inference engines stay model-agnostic.
 
-The project separates the TrackNet workflow into independently runnable and testable stages:
+## What This Repository Provides
 
-1. Read the legacy raw video/CSV layout and preprocess it into a stable processed dataset.
-2. Train V1/V2/V3/V4/V5 heatmap models or the V3 trajectory rectifier from the processed dataset.
-3. Resume training from full checkpoints.
-4. Evaluate checkpoints with frame-level aggregation and export metrics plus prediction CSV files.
-5. Run video inference and export `Frame, Visibility, X, Y` in the original video coordinate system, optionally with overlay video.
-6. Visualize processed samples to inspect heatmaps and coordinate mappings.
-7. Test data handling, shapes, losses, checkpoints, evaluation and inference post-processing with synthetic data and small models.
+- TrackNet V1-V5 model implementations.
+- A stable processed dataset format built from raw badminton rally videos and trajectory CSV annotations.
+- Paper-owned target generation, post-processing, window aggregation, and evaluation protocols.
+- Single-GPU and PyTorch Distributed Data Parallel training.
+- Checkpoint resume, TensorBoard logging, and best-validation model export.
+- Reproducible evaluation artifacts under `model_results/`.
+- Frame-preserving video inference that exports `Frame,Visibility,X,Y` in raw video coordinates.
+- Synthetic tests for data handling, model shapes, losses, checkpoints, training, evaluation, and inference.
 
-## Raw Dataset Adapters
+## Model Coverage
 
-Raw data is never edited in place. A dataset adapter reads an external layout and emits neutral sequence records for preprocessing. The default adapter is `tracknet_domain`, which supports the downloaded TrackNet layout:
+| Version | Main module | Input contract | Target / loss | Evaluation behavior |
+| --- | --- | --- | --- | --- |
+| TrackNet V1 | `tracknet.models.tracknet_v1.TrackNetV1` | 3 RGB frames, 640x360 default | 256-class heatmap, cross entropy | Last-frame prediction, Hough-circle decoding, 5 px tolerance |
+| TrackNet V2 | `tracknet.models.tracknet_v2.TrackNetV2` | 3 RGB frames, 512x288 default | 3 sigmoid heatmaps, WBCE | Weighted window aggregation, largest-blob centroid, 4 px tolerance |
+| TrackNet V3 tracker | `tracknet.models.tracknet_v3.TrackNetV3Tracker` | 8 RGB frames plus match background | Binary-disk heatmaps, WBCE, video mixup | Center-weighted aggregation, optional rectifier support |
+| TrackNet V3 rectifier | `tracknet.models.tracknet_v3.TrajectoryRectifier` | Trajectory windows `[x,y,visibility,mask]` | Masked trajectory MSE | Repairs raw-coordinate tracker trajectories |
+| TrackNet V4 | `tracknet.models.tracknet_v4.TrackNetV4` | 3 RGB frames | Gaussian heatmaps, WBCE | Motion attention fusion, largest-blob centroid |
+| TrackNet V5 | `tracknet.models.tracknet_v5.TrackNetV5` | 3 RGB frames with MDD motion channels | Binary-disk heatmaps, WBCE | Residual spatio-temporal refinement, largest-blob centroid |
+
+The pipeline selects behavior through `tracknet.papers.PaperSpec`. Dataset configs describe sampling only; heatmap semantics, target frames, post-processing, and aggregation live in the paper contracts.
+
+## Repository Layout
 
 ```text
-dataset/
+tracknet/
+  data/          # raw adapters, preprocessing, processed datasets, heatmaps
+  models/        # TrackNet V1/V2/V3/V4/V5 and model registry
+  papers/        # paper-specific contracts and defaults
+  training/      # trainer, losses, metrics, checkpoints, TensorBoard
+  evaluation/    # checkpoint evaluation and metric export
+  inference/     # video prediction, aggregation, post-processing, rectification
+  tools/         # CLI entry points
+configs/         # runnable preprocessing, training, evaluation, inference configs
+papers/          # source papers and extracted text
+scripts/         # utility scripts for synthetic data
+tests/           # synthetic unit and smoke tests
+model_results/   # tracked training logs and evaluation reports
+```
+
+Generated data and heavyweight artifacts are intentionally separated from source code:
+
+```text
+dataset/raw/          # raw external dataset, ignored by Git
+dataset/processed/    # processed dataset, ignored by Git
+outputs/train/        # local training runs and checkpoints, ignored by Git
+model_results/        # tracked logs, metrics, reports, and evaluation artifacts
+```
+
+## Environment
+
+Use the `tracknet` conda environment unless you are intentionally building a different runtime.
+
+```bash
+conda activate tracknet
+pip install -r requirements.txt
+pip install -e .
+```
+
+Python 3.11 is the maintained environment for this workspace. Do not reinstall or replace PyTorch unless you explicitly need to rebuild the CUDA stack.
+
+Hardware inspection:
+
+```bash
+python -m tracknet.tools.hardware
+```
+
+## Raw Dataset Layout
+
+The default adapter is `tracknet_domain`, which expects the public TrackNet-style badminton dataset under `dataset/raw/`:
+
+```text
+dataset/raw/
   Professional/
     match1/
       video/
@@ -36,159 +95,89 @@ dataset/
       csv/
 ```
 
-The legacy adapter still supports the older layout:
-
-```text
-raw_root/
-  match1/
-    video/
-      rally1.mp4
-      rally2.mp4
-    csv/
-      rally1_ball.csv
-      rally2_ball.csv
-  match2/
-    video/
-      ...
-    csv/
-      ...
-```
-
-CSV files must contain these semantic columns. A few historical case/name variants are accepted and normalized:
+CSV files are normalized to the semantic columns:
 
 ```text
 Frame, Visibility, X, Y
 ```
 
-Coordinate conventions:
-
-- `Frame` is treated as a zero-based video frame index by default; filenames such as `000123.jpg` are parsed by extracting the numeric part.
-- `Visibility == 1` means the object is visible and `X/Y` is valid.
-- `Visibility != 1`, missing annotations, NaN values and negative coordinates are treated as invisible for heatmap supervision.
-- `X/Y` always means `(x, y)` in the original video coordinate system; arrays and heatmaps are always `[H, W]`.
-
-## Processed Data Layout
-
-Preprocessing writes a stable project-native format:
-
-```text
-processed_root/
-  manifest.json
-  backgrounds/
-    Professional__match1.png
-  splits/
-    train.txt
-    val.txt
-    test.txt
-  sequences/
-    Professional__match1__rally1/
-      frames/
-        000000.png
-        000001.png
-      annotations.csv
-      sequence_median.png
-      meta.json
-```
-
-`manifest.json` records target size, sequence metadata and raw sources. Each `annotations.csv` contains:
-
-```text
-frame, visibility, x_raw, y_raw, x_model, y_model, frame_file
-```
-
-Fields:
-
-- `x_raw/y_raw` are original video coordinates.
-- `x_model/y_model` are coordinates after letterboxing into model resolution.
-- Training, evaluation and inference share the same letterbox transform to avoid resize/coordinate drift.
-- Heatmaps are generated on demand from paper-owned target policies. The processed dataset stores neutral frames and coordinates only.
-- `manifest.json` preserves raw `domain`, `match_name`, `sequence_name`, source paths and background keys. The generated split files keep `Test` isolated for final evaluation and split training/validation by match.
-
-## Paper-to-Code Mapping
-
-| Paper | Module | Key implementation |
-|---|---|---|
-| V1 | `tracknet.models.tracknet_v1.TrackNetV1` | VGG/DeconvNet table-aligned encoder-decoder without U-Net skips; three-frame input predicts the last frame by default; 256-bin grayscale heatmap logits; `CrossEntropyLoss`; Gaussian target scaled to `[0,255]`; post-processing uses threshold 128 followed by Hough circle detection, accepting exactly one circle. |
-| V2 | `tracknet.models.tracknet_v2.TrackNetV2` | 512x288 3-in/3-out U-Net; three sigmoid heatmaps; WBCE; threshold plus largest-blob centroid; default tolerance 4 px. |
-| V3 tracker | `tracknet.models.tracknet_v3.TrackNetV3Tracker` | Default eight-frame input plus match-level median background; binary-disk heatmaps; WBCE; overlapping inference uses center-weighted aggregation; preprocessing writes sequence and match median backgrounds. |
-| V3 rectifier | `tracknet.models.tracknet_v3.TrajectoryRectifier` | 1D U-Net trajectory repair; input channels `[x,y,visibility,mask]`; coordinates normalized to `[0,1]`; training masks valid points by ratio; inference builds the Equation (2) height-threshold inpainting mask with `delta_y=30`; masked MSE. |
-| V4 | `tracknet.models.tracknet_v4.TrackNetV4` | Absolute grayscale differencing; learnable motion prompt layer; Eq. (4) feature-level fusion via `fusion_variant=eq4` plus the mean-attention ablation via `fusion_variant=mean`; sigmoid heatmaps and WBCE. |
-| V5 | `tracknet.models.tracknet_v5.TrackNetV5` | MDD signed grayscale polarity decoupling; 13-channel input; V2-style coarse draft; DraftMDD long-range skip; TSATTHead residual refinement with PixelShuffle decoding; training-only stochastic context dropout; AdamW + MultiStepLR config. |
-
-### Engineering Judgments
-
-- V1 uses 640x360, while later TrackNet variants commonly use 512x288. Target size is configured during preprocessing instead of hard-coded into model code.
-- V1 states `sigma^2=10`; this is encoded in the V1 paper target policy.
-- V1 does not fully specify OpenCV Hough parameters. The implementation preserves the paper threshold 128 and centralizes radius parameters in one helper.
-- V3 binary radius is described as based on average shuttlecock size. The default policy keeps the project behavior deterministic, and custom policies can be added in the V3 spec when a dataset requires a different radius.
-- V3 training background uses rally medians followed by a match median. Single-video inference lacks match context, so it uses that video median as a self-contained approximation.
-- V4 describes Eq. (4) fusion and a mean-attention variant; both are selected through `fusion_variant`.
-- V5 reports radius 40 for its high-resolution internal data and radius 30 for TrackNetV2-sized data; the V5 policy defaults to the TrackNetV2-sized setting.
-
-Pipeline engines are intentionally paper-agnostic. Training, evaluation, inference and visualization load a `PaperSpec`, then call its model, target, post-processing and aggregation contract. Dataset configs describe sampling only, not heatmap modes or paper versions.
-
-## Installation
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-Run directly from source:
-
-```bash
-export PYTHONPATH=.
-```
-
-Or install as an editable package:
-
-```bash
-pip install -e .
-```
+`Visibility == 1` means the shuttlecock is visible and `X/Y` are valid raw-video coordinates. Invisible, missing, NaN, or negative coordinates are treated as invisible for training targets.
 
 ## Preprocessing
 
-Edit `configs/preprocess.yaml`:
+Preprocessing creates neutral frame and coordinate records. It does not write paper-specific heatmaps; those are generated on demand during training and evaluation.
 
-```yaml
-preprocess:
-  raw_root: dataset/raw
-  output_root: dataset/processed/tracknet_dataset_512x288
-  adapter: tracknet_domain
-  target_width: 512
-  target_height: 288
-```
-
-Run:
+Default 512x288 preprocessing for V2-V5:
 
 ```bash
 python -m tracknet.tools.preprocess --config configs/preprocess.yaml
 ```
 
-Preprocessing shows a sequence-level `tqdm` progress bar. It runs with one worker by default for easy debugging and deterministic logs. Set `preprocess.workers` above `1` to process videos in parallel; manifest and split ordering remain stable.
+V1 640x360 preprocessing:
 
-For V1 at 640x360, run the same adapter with `target_width: 640`, `target_height: 360`, and `output_root: dataset/processed/tracknet_dataset_640x360`; `configs/train_v1.yaml` is already pointed at that processed root and its split files.
+```bash
+python -m tracknet.tools.preprocess --config configs/preprocess_v1_640x360.yaml
+```
+
+High-worker variants are available for full machine preprocessing:
+
+```bash
+python -m tracknet.tools.preprocess --config configs/preprocess_fast_512x288.yaml
+python -m tracknet.tools.preprocess --config configs/preprocess_fast_v1_640x360.yaml
+```
+
+Processed output structure:
+
+```text
+dataset/processed/tracknet_dataset_512x288/
+  manifest.json
+  backgrounds/
+  splits/
+    train.txt
+    val.txt
+    test.txt
+  sequences/
+    <domain>__<match>__<rally>/
+      frames/
+      annotations.csv
+      sequence_median.png
+      meta.json
+```
+
+Each processed annotation row stores both raw and model-space coordinates:
+
+```text
+frame, visibility, x_raw, y_raw, x_model, y_model, frame_file
+```
 
 ## Training
 
-V2 example:
+Training requires explicit split files produced by preprocessing. The default full-training configs use 30 epochs with AMP disabled.
 
-```bash
-python -m tracknet.tools.train --config configs/train_v2.yaml
-```
-
-V1/V3/V4/V5:
+Single-process examples:
 
 ```bash
 python -m tracknet.tools.train --config configs/train_v1.yaml
+python -m tracknet.tools.train --config configs/train_v2.yaml
 python -m tracknet.tools.train --config configs/train_v3_tracker.yaml
 python -m tracknet.tools.train --config configs/train_v3_rectifier.yaml
 python -m tracknet.tools.train --config configs/train_v4.yaml
 python -m tracknet.tools.train --config configs/train_v5.yaml
 ```
 
-Output layout:
+Two-GPU DDP example:
+
+```bash
+CUDA_VISIBLE_DEVICES=4,5 torchrun --standalone --nproc_per_node=2 -m tracknet.tools.train --config configs/train_v4.yaml
+```
+
+`train.batch_size` is per GPU / per DDP rank:
+
+```text
+global_batch_size = train.batch_size * WORLD_SIZE
+```
+
+Training outputs:
 
 ```text
 outputs/train/<experiment>_<timestamp>/
@@ -196,72 +185,33 @@ outputs/train/<experiment>_<timestamp>/
   metrics.last.json
   tensorboard/
   checkpoints/
-    last.pt          # latest full training state for resume
-    best.pt          # full training state with best validation loss
-    model_best.pt    # model weights plus config for evaluation/inference
+    last.pt
+    best.pt
+    model_best.pt
 ```
 
+- `last.pt`: full final training state for resume.
+- `best.pt`: full training state from the best validation epoch.
+- `model_best.pt`: model-only checkpoint plus config for evaluation and inference.
 
-### Validation Splits and AMP
-
-Training requires explicit split files generated during preprocessing. The default TrackNet-domain preprocessing writes deterministic `train.txt`, `val.txt`, and `test.txt` files; training configs use the train/validation files, while evaluation uses the test file. Omitted split files are treated as a configuration error so experiments cannot silently fall back to random or window-level validation splits.
-
-Set `train.amp: true` to enable mixed precision on CUDA. The same config is safe on CPU; checkpoints record both `amp_requested` and `amp_enabled` so experiments remain auditable.
-
-Set `train.tensorboard: true` to write TensorBoard events under the experiment directory. The trainer logs step-level training loss, EMA loss, learning rate, step time and throughput every `train.log_every_steps` optimizer updates, then logs epoch loss, validation loss, epoch time, resolved config, hardware, split metadata, checkpoint events, hparams and validation previews at epoch boundaries. Heatmap models write frame/target/prediction/overlay image panels; the V3 rectifier writes trajectory-style previews. Training configs also set `train.launch_tensorboard: true`, so rank 0 starts TensorBoard automatically for the current experiment logdir and prints the local URL, for example `http://localhost:6006`. If the port is busy, the trainer uses the next available port. Set `train.launch_tensorboard: false` for headless jobs that should only write event files.
-
-TensorBoard histograms and profiler traces are intentionally opt-in because they can create large event directories on long runs. Set `train.tensorboard_histograms: true` for low-frequency parameter and gradient histograms. Set `train.tensorboard_profiler: true` and `train.tensorboard_profile_plugin: true` for a short PyTorch profiler trace under the TensorBoard Profile tab.
-
-Inspect local hardware support before choosing a config:
-
-```bash
-python -m tracknet.tools.hardware
-```
-
-On Apple Silicon, `device: auto` selects MPS when PyTorch exposes it. CUDA AMP is disabled on MPS and CPU. For a local macOS smoke run, create a tiny raw dataset, preprocess it, then train the small V2 config:
-
-```bash
-python scripts/make_synthetic_raw.py --output test_results/dataset/raw
-python -m tracknet.tools.preprocess --config configs/mac_smoke_preprocess.yaml
-python -m tracknet.tools.train --config configs/mac_smoke_train_v2.yaml
-```
-
-## Resume Training
-
-Set this in the training config:
+Resume from a run directory:
 
 ```yaml
 train:
-  resume: outputs/train/tracknet_v2_20260505_120000
+  resume: outputs/train/tracknet_v2_20260511_003832
 ```
 
-By default this reads:
-
-```text
-<resume>/checkpoints/last.pt
-```
-
-A specific checkpoint can also be supplied:
+Resume from a specific checkpoint:
 
 ```yaml
 train:
-  resume_checkpoint: outputs/train/tracknet_v2_20260505_120000/checkpoints/best.pt
+  resume_checkpoint: outputs/train/tracknet_v2_20260511_003832/checkpoints/best.pt
   output_root: outputs/train
 ```
 
-## Multi-GPU Training
-
-The training entry point supports PyTorch DDP. Example for 8 GPUs:
-
-```bash
-torchrun --standalone --nproc_per_node=8 -m tracknet.tools.train --config configs/train_v2.yaml
-```
-
-Distributed settings are inferred from `RANK/LOCAL_RANK/WORLD_SIZE`. Rank 0 creates the experiment directory and broadcasts it to all ranks. DataLoader workers use a seeded generator, and checkpoints record loader settings plus the hardware report. CPU-only smoke tests can run with ordinary `python -m ...` commands.
-
 ## Evaluation
 
-Each paper-specific evaluation config points to the local best-validation `model_best.pt` checkpoint and writes tracked artifacts under `model_results/evaluation/`:
+Each evaluation config evaluates one checkpoint and writes one independent result directory under `model_results/evaluation/`.
 
 ```bash
 python -m tracknet.tools.evaluate --config configs/evaluate_v1.yaml
@@ -272,10 +222,10 @@ python -m tracknet.tools.evaluate --config configs/evaluate_v4.yaml
 python -m tracknet.tools.evaluate --config configs/evaluate_v5.yaml
 ```
 
-Outputs:
+Evaluation output:
 
 ```text
-model_results/evaluation/<name>/
+model_results/evaluation/<model>/
   metrics.json
   metrics.by_sequence.json
   protocol.json
@@ -284,44 +234,34 @@ model_results/evaluation/<name>/
   predictions.csv
 ```
 
-Evaluation uses the common TrackNet confusion categories:
-
-- `tp`: prediction visible, ground truth visible, distance within tolerance.
-- `tn`: prediction invisible, ground truth invisible.
-- `fn`: prediction invisible, ground truth visible.
-- `fp2`: prediction visible, ground truth invisible.
-- `fp1`: prediction visible, ground truth visible, but distance exceeds tolerance.
-
-V2/V4/V5 default to a 4 px tolerance. V1 tennis/badminton tolerances can be configured according to the paper setting.
-
-### Completed Evaluation Results
-
-The tracked results in `model_results/evaluation/` were produced from the best-validation checkpoints listed in `model_results/TRAINING_SUMMARY.md`. V1 uses 640x360 processed inputs and the V1 Hough-circle protocol with 5 px tolerance. V2, V4, and V5 use 512x288 inputs with largest-blob centroid decoding and 4 px tolerance. V3 is reported as both tracker-only and tracker plus trajectory rectifier.
-
-| Model | Accuracy | Precision | Recall | F1 | Total Frames | Protocol |
-| --- | ---: | ---: | ---: | ---: | ---: | --- |
-| TrackNet V1 | 0.6390 | 0.9939 | 0.5669 | 0.7220 | 12600 | V1, 640x360, Hough, 5 px |
-| TrackNet V2 | 0.7091 | 0.9939 | 0.6513 | 0.7869 | 12658 | 512x288, blob centroid, 4 px |
-| TrackNet V3 tracker | 0.7664 | 0.9913 | 0.7235 | 0.8365 | 12658 | 512x288, center-weighted aggregation, 4 px |
-| TrackNet V3 tracker + rectifier | 0.6875 | 0.8655 | 0.7154 | 0.7833 | 12658 | Raw coordinate output with rectification, 4 px |
-| TrackNet V4 | 0.7022 | 0.9910 | 0.6443 | 0.7809 | 12658 | 512x288, motion fusion, 4 px |
-| TrackNet V5 | 0.6928 | 0.8175 | 0.7347 | 0.7739 | 12658 | 512x288, MDD/RSTR/TSATT, 4 px |
-
-The detailed reproducibility report is `model_results/EVALUATION_RESULTS.md`; it includes checkpoint paths, coordinate spaces, confusion-count totals, and artifact locations.
-
-To regenerate the summary report from tracked evaluation folders:
+Regenerate the aggregate report:
 
 ```bash
 python -m tracknet.tools.collect_evaluations
 ```
 
+### Completed Evaluation Results
+
+The tracked results below were produced from the best-validation checkpoints listed in `model_results/TRAINING_SUMMARY.md`. They are reproducible repository results, not a claim of paper-level reproduction.
+
+| Model | Coordinate space | Accuracy | Precision | Recall | F1 | Total frames | Protocol summary |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | --- |
+| TrackNet V1 | model | 0.6390 | 0.9939 | 0.5669 | 0.7220 | 12,600 | 640x360, Hough threshold 128, 5 px tolerance |
+| TrackNet V2 | model | 0.7091 | 0.9939 | 0.6513 | 0.7869 | 12,658 | 512x288, threshold 0.5, 4 px tolerance |
+| TrackNet V3 tracker | model | 0.7664 | 0.9913 | 0.7235 | 0.8365 | 12,658 | 512x288, 8-frame tracker, 4 px tolerance |
+| TrackNet V3 tracker + rectifier | raw | 0.6875 | 0.8655 | 0.7154 | 0.7833 | 12,658 | Raw-coordinate rectified trajectory, 4 px tolerance |
+| TrackNet V4 | model | 0.7022 | 0.9910 | 0.6443 | 0.7809 | 12,658 | 512x288, motion fusion, 4 px tolerance |
+| TrackNet V5 | model | 0.6928 | 0.8175 | 0.7347 | 0.7739 | 12,658 | 512x288 public protocol, 4 px tolerance |
+
+Full protocol, confusion counts, checkpoint paths, and artifact descriptions are documented in [`model_results/EVALUATION_RESULTS.md`](model_results/EVALUATION_RESULTS.md).
+
 ## Video Inference
 
-Edit `configs/predict_video.yaml`:
+Edit `configs/predict_video.yaml` with a real input video and checkpoint path:
 
 ```yaml
 inference:
-  video_path: data/raw/match1/video/rally1.mp4
+  video_path: dataset/raw/Test/match1/video/rally1.mp4
   checkpoint_path: outputs/train/tracknet_v2_20260511_003832/checkpoints/model_best.pt
   output_csv: outputs/predict/rally1_predictions.csv
   output_video: outputs/predict/rally1_overlay.mp4
@@ -329,6 +269,8 @@ inference:
   target_height: 288
   sequence_length: 3
   threshold: 0.5
+  batch_size: 4
+  device: auto
 ```
 
 Run:
@@ -337,7 +279,7 @@ Run:
 python -m tracknet.tools.predict_video --config configs/predict_video.yaml
 ```
 
-CSV output is in the original video coordinate system:
+CSV output is frame-preserving and uses the original video coordinate system:
 
 ```text
 Frame,Visibility,X,Y
@@ -345,9 +287,7 @@ Frame,Visibility,X,Y
 1,0,-1,-1
 ```
 
-Inference is frame-preserving: CSV row count matches the input frame count, and overlay video keeps input order, size and FPS. It streams frames and window batches instead of materializing the whole video or all window outputs. Overlapping MIMO window predictions are reduced with center-weighted heatmap aggregation; V1 uses prefix padding for early frames.
-
-The V3 rectifier can be enabled during video inference:
+V3 rectification can be enabled by adding:
 
 ```yaml
 inference:
@@ -356,63 +296,32 @@ inference:
   rectifier_delta_y_pixels: 30.0
 ```
 
-## Processed Data Visualization
+## Visualization
+
+Inspect processed samples, coordinate mappings, and heatmap overlays:
 
 ```bash
 python -m tracknet.tools.visualize_dataset --config configs/visualize_dataset.yaml
 ```
 
-This writes heatmap overlay PNGs for inspecting processed size, letterbox padding, coordinates and target semantics.
-
 ## Tests
 
-The test suite does not require real datasets or large weights. It builds synthetic raw data, small models and temporary checkpoints:
+The test suite uses synthetic data and small temporary models; it does not require the real dataset or large checkpoints.
 
 ```bash
-PYTHONPATH=. pytest -q
+python -m pytest -q
 ```
 
-Coverage includes:
-
-- raw discovery and CSV normalization;
-- letterbox coordinate round trips;
-- Gaussian/binary heatmaps and largest-blob centroids;
-- sliding-window dataset shapes;
-- V1/V2/V3/V4/V5/rectifier forward passes;
-- WBCE and trajectory masked MSE;
-- checkpoint save/load;
-- evaluation classification and metrics;
-- frame-preserving video inference CSV output;
-- streaming video inference contracts;
-- minimal training smoke tests and best/last/model_best checkpoints;
-- deterministic split-file validation;
-- AMP metadata and CPU fallback;
-- frame-level evaluation aggregation.
-
-A tiny raw dataset can also be generated manually:
+Useful smoke commands:
 
 ```bash
 python scripts/make_synthetic_raw.py --output test_results/dataset/raw
+python -m tracknet.tools.preprocess --config configs/mac_smoke_preprocess.yaml
+python -m tracknet.tools.train --config configs/mac_smoke_train_v2.yaml
 ```
 
-Then point `configs/preprocess.yaml` at that directory for CLI smoke runs.
+Coverage includes raw discovery, CSV normalization, letterbox coordinate round trips, heatmap targets, model forward passes, losses, checkpoint save/load, DDP-safe training paths, evaluation aggregation, and frame-preserving video inference.
 
-## Directory Layout
+## Artifact Policy
 
-```text
-tracknet/
-  data/          # raw reader, preprocess, heatmap, datasets
-  models/        # V1/V2/V3/V4/V5 and registry
-  training/      # losses, trainer, checkpoint, metrics
-  evaluation/    # checkpoint evaluation
-  inference/     # postprocess, video prediction, V3 rectification, visualization
-  tools/         # CLI entry points
-configs/         # runnable YAML examples
-papers/          # v1.pdf ... v5.pdf
-scripts/         # optional synthetic raw generator
-tests/           # synthetic tests and smoke tests
-```
-
-## Excluded From Release Archives
-
-Release archives exclude real datasets, training outputs, large model weights, `.git`, virtual environments, caches, `__pycache__`, `.DS_Store` and temporary test results.
+Real datasets, processed frames, local training runs, checkpoints, virtual environments, caches, and temporary test outputs are excluded from source control. The repository tracks source code, configs, tests, papers, TensorBoard log exports, and evaluation summaries needed to understand and reproduce the current results.

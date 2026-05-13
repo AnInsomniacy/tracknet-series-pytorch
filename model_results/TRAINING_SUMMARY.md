@@ -1,81 +1,102 @@
-# TrackNet Series Training Results
+# TrackNet Series Training Report
 
-This directory contains tracked training logs and evaluation artifacts for the TrackNet V1-V5 training runs. Model checkpoint files remain in the local `outputs/train/` run directories and are not versioned in Git.
+This report documents the tracked training artifacts for the TrackNet V1-V5 runs used by the evaluation configs in this repository.
 
-## File Contents
+Model checkpoint files are not versioned in Git. They remain in local `outputs/train/` run directories. This directory tracks lightweight training logs, evaluation artifacts, and Markdown/CSV/JSON summaries.
 
-- `training_logs/`: TensorBoard event logs copied from each completed training run.
-- `evaluation/`: evaluation metrics, protocols, resolved configs, checkpoint metadata, and frame-level predictions.
-
-TrackNet V3 is split into two trained modules:
-
-- `tracknet_v3_tracker`: the V3 heatmap tracking network.
-- `tracknet_v3_rectifier`: the V3 trajectory rectification network.
-
-## Training Setup
-
-- Hardware: 8 x NVIDIA RTX 4090 GPUs, 24 GB each.
-- Training framework: PyTorch Distributed Data Parallel.
-- GPUs per model run: 2.
-- Epochs: 30 for all runs.
-- Mixed precision: disabled.
-- Batch size convention: `train.batch_size` is per GPU / per DDP rank.
-- Global batch size: `per_gpu_batch_size x number_of_gpus`.
-
-Most TrackNet versions were trained with per-GPU batch size 1 on 2 GPUs, giving global batch size 2.
-
-TrackNet V3 used paper-matched global batch sizes:
-
-- V3 tracker: per-GPU batch size 5 on 2 GPUs, global batch size 10.
-- V3 rectifier: per-GPU batch size 16 on 2 GPUs, global batch size 32.
-
-## Run Summary
-
-| Model | Best Epoch | Final Epoch | Per-GPU Batch | Global Batch | Optimizer | Learning Rate |
-| --- | ---: | ---: | ---: | ---: | --- | ---: |
-| TrackNet V1 | 1 | 30 | 1 | 2 | Adadelta | 1.0 |
-| TrackNet V2 | 1 | 30 | 1 | 2 | Adadelta | 1.0 |
-| TrackNet V3 Tracker | 11 | 30 | 5 | 10 | Adam | 0.001 |
-| TrackNet V3 Rectifier | 25 | 30 | 16 | 32 | Adam | 0.001 |
-| TrackNet V4 | 1 | 30 | 1 | 2 | Adadelta | 1.0 |
-| TrackNet V5 | 2 | 30 | 1 | 2 | AdamW | 0.0001 |
-
-## Local Checkpoints
-
-The evaluation configs use these local best-validation model checkpoints:
-
-```text
-outputs/train/tracknet_v1_20260511_120015/checkpoints/model_best.pt
-outputs/train/tracknet_v2_20260511_003832/checkpoints/model_best.pt
-outputs/train/tracknet_v3_tracker_20260512_003925/checkpoints/model_best.pt
-outputs/train/tracknet_v3_rectifier_20260512_003951/checkpoints/model_best.pt
-outputs/train/tracknet_v4_20260511_002432/checkpoints/model_best.pt
-outputs/train/tracknet_v5_20260511_002455/checkpoints/model_best.pt
-```
-
-## Directory Layout
+## Artifact Scope
 
 ```text
 model_results/
   TRAINING_SUMMARY.md
+  EVALUATION_RESULTS.md
   training_logs/
-    tracknet_v1/
-      tensorboard/
-    tracknet_v2/
-      tensorboard/
-    tracknet_v3_tracker/
-      tensorboard/
-    tracknet_v3_rectifier/
-      tensorboard/
-    tracknet_v4/
-      tensorboard/
-    tracknet_v5/
-      tensorboard/
   evaluation/
-    tracknet_v1/
-    tracknet_v2/
-    tracknet_v3_tracker/
-    tracknet_v3_tracker_rectifier/
-    tracknet_v4/
-    tracknet_v5/
 ```
+
+- `training_logs/`: TensorBoard event logs copied from completed training runs.
+- `evaluation/`: evaluation metrics, protocols, resolved configs, checkpoint metadata, and frame-level prediction files.
+- `EVALUATION_RESULTS.md`: detailed evaluation report for the best-validation checkpoints.
+
+## Training Environment
+
+| Field | Value |
+| --- | --- |
+| Hardware | 8 x NVIDIA RTX 4090 GPUs, 24 GB each |
+| Framework | PyTorch Distributed Data Parallel |
+| Python environment | conda environment `tracknet`, Python 3.11 |
+| Epochs | 30 for all released runs |
+| Mixed precision | Disabled |
+| Checkpoint policy | Best validation checkpoint used for evaluation |
+| TensorBoard | Enabled during training; copied logs are tracked here |
+
+## Batch Size Convention
+
+`train.batch_size` is per GPU / per DDP rank.
+
+```text
+global_batch_size = per_gpu_batch_size * number_of_gpus
+```
+
+Most TrackNet versions were trained on 2 GPUs with per-GPU batch size 1, giving global batch size 2.
+
+TrackNet V3 uses two separately trained modules:
+
+- `tracknet_v3_tracker`: heatmap tracking network.
+- `tracknet_v3_rectifier`: trajectory rectification network.
+
+The V3 tracker and rectifier use larger paper-matched global batch sizes.
+
+## Run Summary
+
+| Model | Config | Best Epoch | Final Epoch | GPUs | Per-GPU Batch | Global Batch | Optimizer | Learning Rate | AMP |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | --- | ---: | --- |
+| TrackNet V1 | `configs/train_v1.yaml` | 1 | 30 | 2 | 1 | 2 | Adadelta | 1.0 | false |
+| TrackNet V2 | `configs/train_v2.yaml` | 1 | 30 | 2 | 1 | 2 | Adadelta | 1.0 | false |
+| TrackNet V3 tracker | `configs/train_v3_tracker.yaml` | 11 | 30 | 2 | 5 | 10 | Adam | 0.001 | false |
+| TrackNet V3 rectifier | `configs/train_v3_rectifier.yaml` | 25 | 30 | 2 | 16 | 32 | Adam | 0.001 | false |
+| TrackNet V4 | `configs/train_v4.yaml` | 1 | 30 | 2 | 1 | 2 | Adadelta | 1.0 | false |
+| TrackNet V5 | `configs/train_v5.yaml` | 2 | 30 | 2 | 1 | 2 | AdamW | 0.0001 | false |
+
+## Checkpoints Used By Evaluation
+
+The evaluation configs point to these local best-validation model checkpoints:
+
+| Model | Local checkpoint |
+| --- | --- |
+| TrackNet V1 | `outputs/train/tracknet_v1_20260511_120015/checkpoints/model_best.pt` |
+| TrackNet V2 | `outputs/train/tracknet_v2_20260511_003832/checkpoints/model_best.pt` |
+| TrackNet V3 tracker | `outputs/train/tracknet_v3_tracker_20260512_003925/checkpoints/model_best.pt` |
+| TrackNet V3 rectifier | `outputs/train/tracknet_v3_rectifier_20260512_003951/checkpoints/model_best.pt` |
+| TrackNet V4 | `outputs/train/tracknet_v4_20260511_002432/checkpoints/model_best.pt` |
+| TrackNet V5 | `outputs/train/tracknet_v5_20260511_002455/checkpoints/model_best.pt` |
+
+## TensorBoard Log Exports
+
+```text
+model_results/training_logs/
+  tracknet_v1/tensorboard/
+  tracknet_v2/tensorboard/
+  tracknet_v3_tracker/tensorboard/
+  tracknet_v3_rectifier/tensorboard/
+  tracknet_v4/tensorboard/
+  tracknet_v5/tensorboard/
+```
+
+The copied TensorBoard logs are intended for reviewing training curves and run metadata without versioning full checkpoint files.
+
+## Evaluation Linkage
+
+Each model is evaluated from its best-validation checkpoint and writes an independent result directory:
+
+```text
+model_results/evaluation/
+  tracknet_v1/
+  tracknet_v2/
+  tracknet_v3_tracker/
+  tracknet_v3_tracker_rectifier/
+  tracknet_v4/
+  tracknet_v5/
+```
+
+See `model_results/EVALUATION_RESULTS.md` for evaluation protocols, confusion counts, aggregate metrics, and reproduction commands.
